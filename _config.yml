@@ -1,0 +1,30 @@
+# Site settings
+
+name: Aaron Shi
+description: FPGA and low-latency systems
+github: pakkachan
+
+# Set this to the live URL once deployed, e.g. "https://pakkachan.github.io".
+# Only used for absolute links in the RSS feed and sitemap.
+url: "https://pakkachan.github.io"
+baseurl: ""
+
+permalink: /:year/:month/:day/:title/
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: highlight
+
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - LICENSE
+  - README.md
+  - vendor

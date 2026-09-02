@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>{% if page.title %}{{ page.title }} &middot; {% endif %}{{ site.name }}</title>
+  {% include meta.html %}
+  <script>
+    // Apply the saved theme before first paint, so there is no flash.
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark' || t === 'light') {
+        document.documentElement.setAttribute('data-theme', t);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ site.baseurl }}/style.css?v={{ site.time | date: '%s' }}">
+  <link rel="alternate" type="application/atom+xml" title="{{ site.name }}" href="{{ site.baseurl }}/feed.xml">
+</head>
+<body>
+
+  <header>
+    <a class="sitename" href="{{ site.baseurl }}/">{{ site.name }}</a>
+    <nav>
+      <a href="{{ site.baseurl }}/">Home</a>
+      <a href="{{ site.baseurl }}/about/">About</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark mode"></button>
+    </nav>
+  </header>
+
+  <main>
+    {{ content }}
+  </main>
+
+  <footer>
+    <a href="https://github.com/{{ site.github }}">github</a> &middot;
+    <a href="{{ site.baseurl }}/feed.xml">rss</a>
+  </footer>
+
+  <script>
+    // Toggle button: flips between light and dark, remembers the choice, and
+    // shows the icon of the mode it will switch to.
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      function effective() {
+        // Default is light; dark only when the toggle has set it.
+        return root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      }
+      function paint() {
+        var dark = effective() === 'dark';
+        btn.textContent = dark ? '☀' : '☽';   // sun when dark, moon when light
+        btn.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+      }
+      paint();
+      btn.addEventListener('click', function () {
+        var next = effective() === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        paint();
+      });
+    })();
+  </script>
+
+</body>
+</html>
