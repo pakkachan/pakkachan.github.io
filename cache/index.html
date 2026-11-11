@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache simulator &middot; Aaron Shi</title>
+<meta name="description" content="Interactive direct-mapped, 2-way set associative and fully associative cache simulator.">
+<script>
+  // Same theme mechanism as the rest of the site: light by default,
+  // dark only when the toggle has stored it.
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+:root {
+  --fg: #1a1a1a; --bg: #fffffb; --muted: #6a6a6a; --link: #0b4ea2; --rule: #ddd; --codebg: #f4f4f0;
+  --panel: #f5f5f0; --panel2: #ececE6;
+  --tag: #2f63cf; --idx: #c96b10; --off: #1e8a4d; --on-field: #fff;
+  --hit: #1a7f45; --hit-bg: #e2f2e7; --miss: #b8382a; --miss-bg: #fbe4df;
+  --cached: #e7edf9; --cached-fg: #2a4f9a;
+}
+:root[data-theme="dark"] {
+  --fg: #ddd9d3; --bg: #16161a; --muted: #8f8f8f; --link: #7fb0ea; --rule: #33333a; --codebg: #202027;
+  --panel: #1e1e24; --panel2: #2a2a32;
+  --tag: #4775d6; --idx: #c4782a; --off: #2b9358; --on-field: #fff;
+  --hit: #63c58f; --hit-bg: #1c3226; --miss: #ef8070; --miss-bg: #3a2320;
+  --cached: #212b3f; --cached-fg: #8fb2ee;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: Verdana, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.55;
+  color: var(--fg); background: var(--bg); max-width: 42rem; margin: 0 auto; padding: 2rem 1rem;
+  -webkit-text-size-adjust: 100%;
+}
+a { color: var(--link); }
+a:hover { text-decoration: none; }
+header {
+  border-bottom: 1px solid var(--rule); padding-bottom: .75rem; margin-bottom: 1.5rem;
+  display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; justify-content: space-between;
+}
+.sitename { font-size: 1.35rem; font-weight: bold; color: var(--fg); text-decoration: none; }
+nav { display: flex; align-items: baseline; gap: 1rem; }
+nav a { font-size: .95rem; }
+.theme-toggle { background: none; border: 0; padding: 0; color: var(--fg); font-size: 1rem; line-height: 1; cursor: pointer; }
+.theme-toggle:hover { color: var(--link); }
+h1 { font-size: 2rem; font-weight: 500; letter-spacing: -.02em; line-height: 1.25; margin: 0 0 .4rem; }
+h2 { font-size: 1.25rem; margin: 2.2rem 0 .5rem; }
+h3 { font-size: 1.02rem; margin: 1.4rem 0 .5rem; }
+p, ul, table { margin: 0 0 1.1rem; }
+.meta, .small { color: var(--muted); font-size: .9rem; }
+.small { font-size: .82rem; margin: .4rem 0 0; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; }
+code { font-size: .85em; background: var(--codebg); padding: .1em .3em; border-radius: 3px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { border: 1px solid var(--rule); padding: .35rem .55rem; text-align: left; }
+footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+
+/* --- simulator panel --- */
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1rem 1.1rem; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; background: var(--bg); border: 1px solid var(--rule); border-radius: 999px; padding: .2rem; margin-bottom: 1.2rem; }
+.seg button { font: inherit; font-size: .92rem; border: 0; background: none; color: var(--muted); border-radius: 999px; padding: .4rem .5rem; cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--panel2); color: var(--fg); font-weight: bold; }
+.seg button:hover { color: var(--fg); }
+.row-between { display: flex; justify-content: space-between; align-items: baseline; }
+.h { font-weight: bold; font-size: 1rem; margin: 0; }
+.addr-val { font-weight: bold; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; margin: .5rem 0 .1rem; accent-color: var(--fg); }
+.scale { color: var(--muted); font-size: .78rem; }
+.panel h3 { margin-top: 1.2rem; }
+
+.bits { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 6px; }
+.bit { text-align: center; border-radius: 4px; color: var(--on-field); padding: .2rem 0 .25rem; font-size: 1.05rem; }
+.bit small { display: block; font-size: .62rem; opacity: .8; font-family: Verdana, sans-serif; }
+.fields { display: flex; gap: 6px; }
+.field { border-radius: 6px; color: var(--on-field); text-align: center; padding: .55rem .3rem .5rem; min-width: 0; transition: flex-grow .25s; }
+.field .v { font-size: 1.3rem; font-weight: bold; letter-spacing: .04em; }
+.field .l { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; opacity: .92; }
+.f-tag { background: var(--tag); } .f-idx { background: var(--idx); } .f-off { background: var(--off); }
+
+.badge { display: inline-block; font-size: .75rem; font-weight: bold; letter-spacing: .04em; border-radius: 4px; padding: .05rem .4rem; margin-right: .4rem; vertical-align: 1px; }
+.b-hit { background: var(--hit-bg); color: var(--hit); }
+.b-miss { background: var(--miss-bg); color: var(--miss); }
+.btns { display: grid; gap: .45rem; }
+button.primary, button.secondary {
+  font: inherit; font-size: .95rem; border-radius: 999px; padding: .5rem 1rem; cursor: pointer; width: 100%;
+}
+button.primary { background: var(--fg); color: var(--bg); border: 1px solid var(--fg); }
+button.secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--rule); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary:not(:disabled):hover { opacity: .88; }
+button.secondary:not(:disabled):hover { border-color: var(--muted); }
+.last { min-height: 1.3em; }
+
+/* --- cache view --- */
+.cache { display: grid; gap: .5rem; }
+.set { display: grid; grid-template-columns: 4.6rem 1fr; gap: .5rem; align-items: stretch; border-radius: 6px; padding: .3rem; border: 2px solid transparent; }
+.set.indexed { border-color: var(--idx); }
+.set-label { font-size: .78rem; color: var(--muted); display: flex; flex-direction: column; justify-content: center; }
+.set-label b { color: var(--fg); font-size: .85rem; }
+.lines { display: grid; gap: .5rem; grid-template-columns: repeat(var(--ways), minmax(0, 1fr)); }
+.line { background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: .4rem .5rem; font-size: .8rem; position: relative; }
+.line.match { border-color: var(--hit); box-shadow: inset 0 0 0 1px var(--hit); }
+.line-top { display: flex; justify-content: space-between; align-items: baseline; gap: .3rem; }
+.line-name { font-weight: bold; }
+.lru { font-size: .66rem; letter-spacing: .05em; color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 0 .25rem; }
+.line-info { color: var(--muted); margin: .15rem 0 .3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.line-info .t { color: var(--tag); font-weight: bold; }
+.line-info .vb { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.bytes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.byte { background: var(--codebg); border-radius: 3px; text-align: center; font-size: .75rem; padding: .12rem 0; font-variant-numeric: tabular-nums; }
+.byte.empty { color: transparent; }
+.byte.req { background: var(--off); color: var(--on-field); font-weight: bold; }
+@keyframes fh { 0% { background: var(--hit-bg); transform: scale(1.03); } 100% { background: var(--bg); transform: none; } }
+@keyframes fm { 0% { background: var(--miss-bg); transform: scale(1.03); } 100% { background: var(--bg); transform: none; } }
+.flash-hit { animation: fh .9s ease-out; }
+.flash-miss { animation: fm .9s ease-out; }
+
+/* --- memory view --- */
+.mem { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
+.blk { border: 1px solid var(--rule); border-radius: 6px; padding: .3rem .35rem .35rem; background: var(--bg); }
+.blk.cached { background: var(--cached); }
+.blk.reqb { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.blk-top { display: flex; justify-content: space-between; font-size: .72rem; margin-bottom: .25rem; gap: .2rem; }
+.blk-top b { font-size: .75rem; }
+.blk-top span { color: var(--muted); white-space: nowrap; }
+.blk.cached .where { color: var(--cached-fg); font-weight: bold; }
+.blk .byte { cursor: pointer; border: 0; font: inherit; font-size: .75rem; color: var(--fg); padding: .15rem 0; }
+.blk .byte:hover { outline: 1px solid var(--muted); }
+.blk .byte.req { color: var(--on-field); }
+
+@media (max-width: 560px) {
+  body { font-size: 16px; padding-top: 1.5rem; }
+  .mem { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .set { grid-template-columns: 1fr; gap: .25rem; }
+  .set-label { flex-direction: row; gap: .5rem; align-items: baseline; justify-content: flex-start; }
+  .lines.w4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .flash-hit, .flash-miss { animation: none; } .field { transition: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="sitename" href="/">Aaron Shi</a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about/">About</a>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark mode"></button>
+  </nav>
+</header>
+
+<main>
+  <h1>Cache simulator</h1>
+  <p class="meta">Direct mapped, 2-way set associative and fully associative, on the same address stream.</p>
+
+  <h2>Main memory</h2>
+  <p class="small" style="margin:-.2rem 0 .8rem">
+    Each block holds four consecutive bytes and is copied into one cache line when fetched.
+    Shaded blocks are in the selected cache. Click any byte to request it.
+  </p>
+  <div class="mem" id="mem"></div>
+
+  <p style="margin-top:1.5rem">
+    A 64-byte memory, 4-byte blocks and a 4-line cache. Pick an organisation, choose an address
+    and access it. Every access is applied to all three caches at once, letting you switch tabs to
+    compare how each one handles the same pattern.
+  </p>
+
+  <section class="panel" aria-label="Simulator controls">
+    <div class="seg" role="tablist" id="tabs"></div>
+
+    <div class="row-between">
+      <label for="addr" class="h">Requested address</label>
+      <span class="addr-val" id="addrVal"></span>
+    </div>
+    <input type="range" id="addr" min="0" max="63" value="8">
+    <div class="row-between scale"><span>0</span><span>63</span></div>
+
+    <h3>Address breakdown</h3>
+    <div class="bits mono" id="bits"></div>
+    <div class="fields mono" id="fields"></div>
+    <p class="small" id="addrMeta"></p>
+
+    <div class="btns" style="margin-top:1.2rem">
+      <button class="primary" id="accessBtn" type="button">Access address and load block if needed</button>
+      <button class="secondary" id="clearBtn" type="button">Clear cache</button>
+    </div>
+    <p class="last" id="lastMsg" aria-live="polite" style="margin:.8rem 0 0;font-size:.93rem"></p>
+  </section>
+
+  <h2 id="cacheTitle">Cache contents</h2>
+  <p class="small" id="cacheSub" style="margin:-.2rem 0 .8rem"></p>
+  <div class="cache" id="cache"></div>
+
+</main>
+
+<footer>
+  <a href="https://github.com/pakkachan">github</a> &middot; <a href="/">home</a>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- model ----------
+  var ORGS = {
+    direct: { key: 'direct', tab: 'Direct',       name: 'Direct mapped',           sets: 4, ways: 1 },
+    two:    { key: 'two',    tab: '2-way',        name: '2-way set associative',   sets: 2, ways: 2 },
+    fully:  { key: 'fully',  tab: 'Fully assoc.', name: 'Fully associative',       sets: 1, ways: 4 }
+  };
+  var ORDER = ['direct', 'two', 'fully'];
+  ORDER.forEach(function (k) {
+    var o = ORGS[k];
+    o.indexBits = Math.log2(o.sets);
+    o.tagBits = 4 - o.indexBits;
+  });
+
+  function newCache(o) {
+    var c = [];
+    for (var s = 0; s < o.sets; s++) {
+      var set = [];
+      for (var w = 0; w < o.ways; w++) set.push({ valid: false, tag: 0, block: 0, used: 0 });
+      c.push(set);
+    }
+    return c;
+  }
+  function lookup(o, cache, block) {
+    var set = block % o.sets, tag = Math.floor(block / o.sets), lines = cache[set], way = -1;
+    for (var i = 0; i < lines.length; i++) if (lines[i].valid && lines[i].tag === tag) { way = i; break; }
+    return { set: set, tag: tag, way: way };
+  }
+  function victim(lines) {
+    for (var i = 0; i < lines.length; i++) if (!lines[i].valid) return i;
+    var m = 0;
+    for (var j = 1; j < lines.length; j++) if (lines[j].used < lines[m].used) m = j;
+    return m;
+  }
+
+  var S = {
+    org: 'direct', addr: 8, tick: 0, seen: {}, log: [], caches: {},
+    flash: null, lastMsg: ''
+  };
+  function clearCaches() {
+    ORDER.forEach(function (k) { S.caches[k] = newCache(ORGS[k]); });
+    S.tick = 0; S.seen = {}; S.log = []; S.flash = null; S.lastMsg = '';
+  }
+  clearCaches();
+
+  function accessAll(addr) {
+    var block = addr >> 2;
+    S.tick++;
+    var cold = !S.seen[block];
+    var fullyWouldHit = lookup(ORGS.fully, S.caches.fully, block).way >= 0;
+    var entry = { n: S.log.length + 1, addr: addr, block: block, res: {} };
+    ORDER.forEach(function (k) {
+      var o = ORGS[k], c = S.caches[k], r = lookup(o, c, block);
+      if (r.way >= 0) {
+        c[r.set][r.way].used = S.tick;
+        entry.res[k] = { kind: 'hit', set: r.set, way: r.way };
+      } else {
+        var w = victim(c[r.set]), old = c[r.set][w];
+        var kind = cold ? 'cold' : (k !== 'fully' && fullyWouldHit) ? 'conflict' : 'capacity';
+        entry.res[k] = { kind: kind, set: r.set, way: w, evicted: old.valid ? old.block : null };
+        c[r.set][w] = { valid: true, tag: r.tag, block: block, used: S.tick };
+      }
+    });
+    S.seen[block] = true;
+    S.log.push(entry);
+    var mine = entry.res[S.org];
+    S.flash = { set: mine.set, way: mine.way, hit: mine.kind === 'hit' };
+    S.lastMsg = describeResult(ORGS[S.org], entry, mine);
+  }
+
+  // ---------- helpers ----------
+  function bin(v, n) { var s = v.toString(2); while (s.length < n) s = '0' + s; return n === 0 ? '' : s; }
+  function lineName(o, set, way) {
+    if (o.ways === 1) return 'line ' + set;
+    if (o.sets === 1) return 'line ' + way;
+    return 'set ' + set + ', way ' + way;
+  }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function describeResult(o, e, r) {
+    var where = lineName(o, r.set, r.way);
+    if (r.kind === 'hit') return '<span class="badge b-hit">HIT</span>' + esc('Address ' + e.addr + ' (block ' + e.block + ') found in ' + where + '.');
+    var s = 'Address ' + e.addr + ' (block ' + e.block + ') not cached. Block ' + e.block + ' loaded into ' + where;
+    s += r.evicted !== null ? ', replacing block ' + r.evicted + '.' : '.';
+    return '<span class="badge b-miss">MISS</span>' + esc(s);
+  }
+  function mappingHint(o, block) {
+    if (o.ways === 1) return 'idx ' + bin(block % o.sets, o.indexBits);
+    if (o.sets === 1) return 'any line';
+    return 'set ' + (block % o.sets);
+  }
+
+  // ---------- rendering ----------
+  var $ = function (id) { return document.getElementById(id); };
+
+  function renderTabs() {
+    $('tabs').innerHTML = ORDER.map(function (k) {
+      var on = k === S.org;
+      return '<button type="button" role="tab" data-org="' + k + '" aria-selected="' + on + '">' + ORGS[k].tab + '</button>';
+    }).join('');
+  }
+
+  function renderAddress() {
+    var o = ORGS[S.org], a = S.addr, block = a >> 2, off = a & 3;
+    var set = block % o.sets, tag = Math.floor(block / o.sets);
+    $('addrVal').textContent = a;
+    $('addr').value = a;
+    var b = bin(a, 6), html = '';
+    for (var i = 0; i < 6; i++) {
+      var pos = 5 - i;
+      var cls = pos < 2 ? 'f-off' : pos < 2 + o.indexBits ? 'f-idx' : 'f-tag';
+      html += '<div class="bit ' + cls + '"><small>a' + pos + '</small>' + b[i] + '</div>';
+    }
+    $('bits').innerHTML = html;
+    var f = [{ c: 'f-tag', l: 'Tag', bits: o.tagBits, v: tag }];
+    if (o.indexBits) f.push({ c: 'f-idx', l: 'Index', bits: o.indexBits, v: set });
+    f.push({ c: 'f-off', l: 'Offset', bits: 2, v: off });
+    $('fields').innerHTML = f.map(function (x) {
+      return '<div class="field ' + x.c + '" style="flex:' + x.bits + ' 1 0">' +
+        '<div class="v">' + bin(x.v, x.bits) + '</div><div class="l">' + x.l + ' = ' + x.v + '</div></div>';
+    }).join('');
+    $('addrMeta').textContent = 'Binary address: ' + b + ' · Memory block: ' + block + ' (bytes ' + (block * 4) + '-' + (block * 4 + 3) + ') · Byte ' + off + ' within the block';
+  }
+
+  function renderLocation() {
+    $('lastMsg').innerHTML = S.lastMsg;
+  }
+
+  function lruWay(lines) {
+    if (lines.length < 2) return -1;
+    for (var i = 0; i < lines.length; i++) if (!lines[i].valid) return -1;
+    return victim(lines);
+  }
+
+  function renderCache() {
+    var o = ORGS[S.org], c = S.caches[S.org], block = S.addr >> 2, r = lookup(o, c, block);
+    $('cacheTitle').textContent = 'Cache contents: ' + o.name.toLowerCase();
+    $('cacheSub').textContent = o.sets + (o.sets === 1 ? ' set' : ' sets') + ' × ' + o.ways + (o.ways === 1 ? ' way' : ' ways') +
+      ', 4 bytes per line' + (o.ways > 1 ? ', LRU replacement.' : '.') + ' The outlined set is the one the requested address maps to.';
+    var flash = S.flash; S.flash = null;
+    var html = '';
+    for (var s = 0; s < o.sets; s++) {
+      var lines = c[s], lru = lruWay(lines);
+      var label = o.ways === 1 ? '<b>Index ' + bin(s, o.indexBits) + '</b><span>line ' + s + '</span>'
+                : o.sets === 1 ? '<b>One set</b><span>any line</span>'
+                : '<b>Set ' + bin(s, o.indexBits) + '</b><span>' + o.ways + ' ways</span>';
+      html += '<div class="set' + (s === r.set ? ' indexed' : '') + '"><div class="set-label">' + label + '</div>';
+      html += '<div class="lines w' + o.ways + '" style="--ways:' + o.ways + '">';
+      for (var w = 0; w < o.ways; w++) {
+        var L = lines[w], cls = 'line';
+        if (s === r.set && w === r.way) cls += ' match';
+        if (flash && flash.set === s && flash.way === w) cls += flash.hit ? ' flash-hit' : ' flash-miss';
+        var nm = o.ways === 1 ? 'Line ' + s : o.sets === 1 ? 'Line ' + w : 'Way ' + w;
+        html += '<div class="' + cls + '"><div class="line-top"><span class="line-name">' + nm + '</span>' +
+          (w === lru ? '<span class="lru" title="Least recently used: next to be evicted">LRU</span>' : '') + '</div>';
+        if (L.valid) {
+          html += '<div class="line-info">V <span class="vb">1</span> · tag <span class="t vb">' + bin(L.tag, o.tagBits) + '</span> · block ' + L.block + '</div>';
+        } else {
+          html += '<div class="line-info">V <span class="vb">0</span> · empty</div>';
+        }
+        html += '<div class="bytes">';
+        for (var i = 0; i < 4; i++) {
+          if (!L.valid) { html += '<div class="byte empty">-</div>'; continue; }
+          var ad = L.block * 4 + i;
+          html += '<div class="byte' + (s === r.set && w === r.way && ad === S.addr ? ' req' : '') + '">' + ad + '</div>';
+        }
+        html += '</div></div>';
+      }
+      html += '</div></div>';
+    }
+    $('cache').innerHTML = html;
+  }
+
+  function renderMemory() {
+    var o = ORGS[S.org], c = S.caches[S.org], where = {};
+    for (var s = 0; s < o.sets; s++) for (var w = 0; w < o.ways; w++) {
+      var L = c[s][w];
+      if (L.valid) where[L.block] = o.ways === 1 ? 'line ' + s : o.sets === 1 ? 'line ' + w : 's' + s + ' w' + w;
+    }
+    var reqB = S.addr >> 2, html = '';
+    for (var b = 0; b < 16; b++) {
+      var cached = where[b] !== undefined;
+      html += '<div class="blk' + (cached ? ' cached' : '') + (b === reqB ? ' reqb' : '') + '">' +
+        '<div class="blk-top"><b>Block ' + b + '</b><span class="' + (cached ? 'where' : '') + '">' +
+        (cached ? where[b] : mappingHint(o, b)) + '</span></div><div class="bytes">';
+      for (var i = 0; i < 4; i++) {
+        var ad = b * 4 + i;
+        html += '<button type="button" class="byte' + (ad === S.addr ? ' req' : '') + '" data-addr="' + ad + '" aria-label="Address ' + ad + '">' + ad + '</button>';
+      }
+      html += '</div></div>';
+    }
+    $('mem').innerHTML = html;
+  }
+
+  function render() {
+    renderTabs(); renderAddress(); renderLocation(); renderCache(); renderMemory();
+  }
+
+  // ---------- events ----------
+  function setOrg(k) { if (ORGS[k] && k !== S.org) { S.org = k; S.lastMsg = ''; render(); } }
+  $('tabs').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setOrg(b.dataset.org); });
+  $('addr').addEventListener('input', function () { S.addr = +this.value; S.lastMsg = ''; render(); });
+  $('mem').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-addr]'); if (!b) return;
+    S.addr = +b.dataset.addr; S.lastMsg = ''; render();
+  });
+  $('accessBtn').addEventListener('click', function () { accessAll(S.addr); render(); });
+  $('clearBtn').addEventListener('click', function () { clearCaches(); render(); });
+  // ---------- theme toggle (matches the site's) ----------
+  (function () {
+    var root = document.documentElement, btn = $('theme-toggle');
+    function dark() { return root.getAttribute('data-theme') === 'dark'; }
+    function paint() { btn.textContent = dark() ? '☀' : '☽'; btn.title = dark() ? 'Switch to light mode' : 'Switch to dark mode'; }
+    paint();
+    btn.addEventListener('click', function () {
+      var next = dark() ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      paint();
+    });
+  })();
+
+  render();
+
+  // Exposed for testing only.
+  window.__cacheSim = { S: S, accessAll: accessAll, clearCaches: clearCaches, ORGS: ORGS };
+})();
+</script>
+</body>
+</html>
