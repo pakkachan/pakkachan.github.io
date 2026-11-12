@@ -1,0 +1,7 @@
+# Pages that aren't in _posts/, listed under "Blogs" on the home page alongside the posts.
+- title: Cache simulator
+  url: /cache/
+  date: 2026-11-11
+- title: Bode Nyquist
+  url: /bode-nyquist/
+  date: 2026-11-12

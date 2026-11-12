@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cache simulator &middot; Aaron Shi</title>
-<meta name="description" content="Interactive direct-mapped, 2-way set associative and fully associative cache simulator.">
+<meta name="description" content="Interactive cache simulator: one 8-slot cache with 1, 2, 4 or 8 ways.">
 <script>
   // Same theme mechanism as the rest of the site: light by default,
   // dark only when the toggle has stored it.
@@ -18,21 +18,23 @@
 <style>
 :root {
   --fg: #1a1a1a; --bg: #fffffb; --muted: #6a6a6a; --link: #0b4ea2; --rule: #ddd; --codebg: #f4f4f0;
-  --panel: #f5f5f0; --panel2: #ececE6;
-  --tag: #2f63cf; --idx: #c96b10; --off: #1e8a4d; --on-field: #fff;
-  --hit: #1a7f45; --hit-bg: #e2f2e7; --miss: #b8382a; --miss-bg: #fbe4df;
-  --cached: #e7edf9; --cached-fg: #2a4f9a;
+  --panel: #f5f5f0;
+  --tag: #2f63cf; --idx: #eb6834; --on-field: #fff;
+  --green: #99c524; --on-green: #1a1a1a;
+  --miss: #b8382a; --miss-bg: #fbe4df;
+  --book: #e7edf9; --book-fg: #2a4f9a;
 }
 :root[data-theme="dark"] {
   --fg: #ddd9d3; --bg: #16161a; --muted: #8f8f8f; --link: #7fb0ea; --rule: #33333a; --codebg: #202027;
-  --panel: #1e1e24; --panel2: #2a2a32;
-  --tag: #4775d6; --idx: #c4782a; --off: #2b9358; --on-field: #fff;
-  --hit: #63c58f; --hit-bg: #1c3226; --miss: #ef8070; --miss-bg: #3a2320;
-  --cached: #212b3f; --cached-fg: #8fb2ee;
+  --panel: #1e1e24;
+  --tag: #4775d6; --idx: #eb6834; --on-field: #fff;
+  --green: #99c524; --on-green: #1a1a1a;
+  --miss: #ef8070; --miss-bg: #3a2320;
+  --book: #212b3f; --book-fg: #8fb2ee;
 }
 * { box-sizing: border-box; }
 body {
-  font-family: Verdana, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.55;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.55;
   color: var(--fg); background: var(--bg); max-width: 42rem; margin: 0 auto; padding: 2rem 1rem;
   -webkit-text-size-adjust: 100%;
 }
@@ -42,105 +44,98 @@ header {
   border-bottom: 1px solid var(--rule); padding-bottom: .75rem; margin-bottom: 1.5rem;
   display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; justify-content: space-between;
 }
-.sitename { font-size: 1.35rem; font-weight: bold; color: var(--fg); text-decoration: none; }
+.sitename { font-size: 1.5rem; color: var(--fg); text-decoration: none; }
 nav { display: flex; align-items: baseline; gap: 1rem; }
 nav a { font-size: .95rem; }
 .theme-toggle { background: none; border: 0; padding: 0; color: var(--fg); font-size: 1rem; line-height: 1; cursor: pointer; }
 .theme-toggle:hover { color: var(--link); }
 h1 { font-size: 2rem; font-weight: 500; letter-spacing: -.02em; line-height: 1.25; margin: 0 0 .4rem; }
-h2 { font-size: 1.25rem; margin: 2.2rem 0 .5rem; }
-h3 { font-size: 1.02rem; margin: 1.4rem 0 .5rem; }
-p, ul, table { margin: 0 0 1.1rem; }
-.meta, .small { color: var(--muted); font-size: .9rem; }
-.small { font-size: .82rem; margin: .4rem 0 0; }
-hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
-code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; }
-code { font-size: .85em; background: var(--codebg); padding: .1em .3em; border-radius: 3px; }
-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { border: 1px solid var(--rule); padding: .35rem .55rem; text-align: left; }
+h2 { font-size: 1.1rem; font-weight: normal; margin: 1.8rem 0 .5rem; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+h2 .note { font-size: .8rem; font-weight: normal; color: var(--muted); }
+p { margin: 0 0 1.1rem; }
+.meta { color: var(--muted); font-size: .9rem; }
 footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
 
-/* --- simulator panel --- */
-.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1rem 1.1rem; }
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; background: var(--bg); border: 1px solid var(--rule); border-radius: 999px; padding: .2rem; margin-bottom: 1.2rem; }
-.seg button { font: inherit; font-size: .92rem; border: 0; background: none; color: var(--muted); border-radius: 999px; padding: .4rem .5rem; cursor: pointer; }
-.seg button[aria-selected="true"] { background: var(--panel2); color: var(--fg); font-weight: bold; }
-.seg button:hover { color: var(--fg); }
-.row-between { display: flex; justify-content: space-between; align-items: baseline; }
-.h { font-weight: bold; font-size: 1rem; margin: 0; }
-.addr-val { font-weight: bold; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-input[type=range] { width: 100%; margin: .5rem 0 .1rem; accent-color: var(--fg); }
-.scale { color: var(--muted); font-size: .78rem; }
-.panel h3 { margin-top: 1.2rem; }
-
-.bits { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-bottom: 6px; }
-.bit { text-align: center; border-radius: 4px; color: var(--on-field); padding: .2rem 0 .25rem; font-size: 1.05rem; }
-.bit small { display: block; font-size: .62rem; opacity: .8; font-family: Verdana, sans-serif; }
-.fields { display: flex; gap: 6px; }
-.field { border-radius: 6px; color: var(--on-field); text-align: center; padding: .55rem .3rem .5rem; min-width: 0; transition: flex-grow .25s; }
-.field .v { font-size: 1.3rem; font-weight: bold; letter-spacing: .04em; }
-.field .l { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; opacity: .92; }
-.f-tag { background: var(--tag); } .f-idx { background: var(--idx); } .f-off { background: var(--off); }
-
-.badge { display: inline-block; font-size: .75rem; font-weight: bold; letter-spacing: .04em; border-radius: 4px; padding: .05rem .4rem; margin-right: .4rem; vertical-align: 1px; }
-.b-hit { background: var(--hit-bg); color: var(--hit); }
-.b-miss { background: var(--miss-bg); color: var(--miss); }
-.btns { display: grid; gap: .45rem; }
-button.primary, button.secondary {
-  font: inherit; font-size: .95rem; border-radius: 999px; padding: .5rem 1rem; cursor: pointer; width: 100%;
+/* --- memory --- */
+.mem { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: .35rem; }
+.blk { border: 1px solid var(--rule); border-radius: 1px; padding: .2rem .25rem .25rem; background: var(--bg); }
+.blk.cached { background: var(--book); }
+.blk.reqb { box-shadow: inset 0 0 0 1px var(--rule); }
+.blk-name { font-size: .7rem; line-height: 1.3; margin-bottom: .15rem; }
+.blk.cached .blk-name { color: var(--book-fg); }
+.bytes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; }
+.byte {
+  font: inherit; font-size: .68rem; line-height: 1.4; padding: .1rem 0; border: 0; border-radius: 1px;
+  background: var(--codebg); color: var(--fg); text-align: center; cursor: pointer; font-variant-numeric: tabular-nums;
 }
+.byte:hover { outline: 1px solid var(--muted); }
+.byte.req { background: var(--green); color: var(--on-green); }
+
+/* --- cache shelf --- */
+.shelf { display: flex; border: 1px solid var(--rule); border-radius: 1px; background: var(--panel); padding: .3rem; }
+.set { flex: 1 1 0; min-width: 0; padding: .25rem; border-radius: 1px; }
+.set.indexed { box-shadow: inset 0 0 0 2px var(--idx); }
+.slots { display: grid; gap: .25rem; }
+.book {
+  height: 4.4rem; border: 1px dashed var(--rule); border-radius: 1px; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: .3rem .1rem .25rem; font-size: .75rem; line-height: 1.2; min-width: 0; overflow: hidden;
+}
+.book.full { border: 1px solid var(--book); background: var(--book); color: var(--book-fg); }
+.book.match { border-color: var(--green); background: var(--green); color: var(--on-green); }
+/* on a hit the book (fill and border) lightens toward white, not fully, over the first 1/8
+   of the pulse, then returns to green over the remaining 7/8 */
+@keyframes pulse {
+  12.5% { background: color-mix(in srgb, var(--green) 35%, #fff); border-color: color-mix(in srgb, var(--green) 35%, #fff); }
+}
+.book.pulse { animation: pulse .75s ease-in-out 1; }
+@media (prefers-reduced-motion: reduce) { .book.pulse { animation: none; } }
+.book .bt { font-size: .72rem; }
+.book .lru { font-size: .6rem; letter-spacing: .04em; opacity: .75; }
+.set-idx { text-align: center; font-size: .7rem; color: var(--muted); margin-top: .2rem; line-height: 1.2; }
+
+/* --- controls --- */
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 1px; padding: 1rem 1rem .7rem; margin-top: 1.5rem; }
+.row-between { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.h { font-size: 1rem; margin: 0; }
+.val { font-size: 1rem; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; margin: .45rem 0 .1rem; accent-color: var(--fg); }
+.scale { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; padding: 0 .3rem; margin-bottom: 1rem; }
+.fields { display: flex; gap: 6px; margin-top: .2rem; }
+.field { border-radius: 1px; color: var(--on-field); text-align: center; padding: .45rem .3rem .4rem; min-width: max-content; }
+.field .v { font-size: 1.2rem; letter-spacing: .04em; }
+.field .l { font-size: .75rem; opacity: .92; }
+.f-tag { background: var(--tag); } .f-idx { background: var(--idx); } .f-off { background: var(--green); color: var(--on-green); }
+.btns { display: grid; gap: .45rem; margin-top: 1rem; }
+button.primary, button.secondary { font: inherit; font-size: .95rem; border-radius: 1px; padding: .5rem 1rem; cursor: pointer; width: 100%; }
 button.primary { background: var(--fg); color: var(--bg); border: 1px solid var(--fg); }
 button.secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--rule); }
-button:disabled { opacity: .45; cursor: default; }
-button.primary:not(:disabled):hover { opacity: .88; }
-button.secondary:not(:disabled):hover { border-color: var(--muted); }
-.last { min-height: 1.3em; }
+button.primary:hover { opacity: .88; }
+button.secondary:hover { border-color: var(--muted); }
+.last { margin: .8rem 0 0; font-size: .93rem; }
+.last:empty { display: none; }
+.last { transition: opacity .5s; }
+.last.fade { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .last { transition: none; } }
+.badge { display: inline-block; font-size: .75rem; font-weight: bold; letter-spacing: .04em; border-radius: 1px; padding: .05rem .4rem; margin-right: .4rem; vertical-align: 1px; }
+.b-hit { background: var(--green); color: var(--on-green); }
+.b-miss { background: var(--miss-bg); color: var(--miss); }
 
-/* --- cache view --- */
-.cache { display: grid; gap: .5rem; }
-.set { display: grid; grid-template-columns: 4.6rem 1fr; gap: .5rem; align-items: stretch; border-radius: 6px; padding: .3rem; border: 2px solid transparent; }
-.set.indexed { border-color: var(--idx); }
-.set-label { font-size: .78rem; color: var(--muted); display: flex; flex-direction: column; justify-content: center; }
-.set-label b { color: var(--fg); font-size: .85rem; }
-.lines { display: grid; gap: .5rem; grid-template-columns: repeat(var(--ways), minmax(0, 1fr)); }
-.line { background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: .4rem .5rem; font-size: .8rem; position: relative; }
-.line.match { border-color: var(--hit); box-shadow: inset 0 0 0 1px var(--hit); }
-.line-top { display: flex; justify-content: space-between; align-items: baseline; gap: .3rem; }
-.line-name { font-weight: bold; }
-.lru { font-size: .66rem; letter-spacing: .05em; color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 0 .25rem; }
-.line-info { color: var(--muted); margin: .15rem 0 .3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.line-info .t { color: var(--tag); font-weight: bold; }
-.line-info .vb { font-family: ui-monospace, Menlo, Consolas, monospace; }
-.bytes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
-.byte { background: var(--codebg); border-radius: 3px; text-align: center; font-size: .75rem; padding: .12rem 0; font-variant-numeric: tabular-nums; }
-.byte.empty { color: transparent; }
-.byte.req { background: var(--off); color: var(--on-field); font-weight: bold; }
-@keyframes fh { 0% { background: var(--hit-bg); transform: scale(1.03); } 100% { background: var(--bg); transform: none; } }
-@keyframes fm { 0% { background: var(--miss-bg); transform: scale(1.03); } 100% { background: var(--bg); transform: none; } }
-.flash-hit { animation: fh .9s ease-out; }
-.flash-miss { animation: fm .9s ease-out; }
-
-/* --- memory view --- */
-.mem { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
-.blk { border: 1px solid var(--rule); border-radius: 6px; padding: .3rem .35rem .35rem; background: var(--bg); }
-.blk.cached { background: var(--cached); }
-.blk.reqb { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
-.blk-top { display: flex; justify-content: space-between; font-size: .72rem; margin-bottom: .25rem; gap: .2rem; }
-.blk-top b { font-size: .75rem; }
-.blk-top span { color: var(--muted); white-space: nowrap; }
-.blk.cached .where { color: var(--cached-fg); font-weight: bold; }
-.blk .byte { cursor: pointer; border: 0; font: inherit; font-size: .75rem; color: var(--fg); padding: .15rem 0; }
-.blk .byte:hover { outline: 1px solid var(--muted); }
-.blk .byte.req { color: var(--on-field); }
+/* --- hit rate graph --- */
+.graph { border: 1px solid var(--rule); border-radius: 1px; }
+.graph svg { display: block; width: 100%; height: 213px; background: var(--bg); border-radius: 1px; }
+.g-axis { stroke: var(--muted); stroke-width: 1; }
+.g-line { stroke: var(--tag); stroke-width: 2; fill: none; stroke-linejoin: round; }
+.g-dot { fill: var(--tag); }
+.g-lbl { fill: var(--muted); font-size: 11px; }
 
 @media (max-width: 560px) {
-  body { font-size: 16px; padding-top: 1.5rem; }
-  .mem { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .set { grid-template-columns: 1fr; gap: .25rem; }
-  .set-label { flex-direction: row; gap: .5rem; align-items: baseline; justify-content: flex-start; }
-  .lines.w4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mem { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .set { padding: .15rem; }
+  .slots { gap: .15rem; }
+  .book { font-size: .68rem; }
+  .book .bt { font-size: .62rem; }
 }
-@media (prefers-reduced-motion: reduce) { .flash-hit, .flash-miss { animation: none; } .field { transition: none; } }
 </style>
 </head>
 <body>
@@ -156,47 +151,40 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
 
 <main>
   <h1>Cache simulator</h1>
-  <p class="meta">Direct mapped, 2-way set associative and fully associative, on the same address stream.</p>
+  <p class="meta"><time datetime="2026-11-11">11 November 2026</time></p>
 
-  <h2>Main memory</h2>
-  <p class="small" style="margin:-.2rem 0 .8rem">
-    Each block holds four consecutive bytes and is copied into one cache line when fetched.
-    Shaded blocks are in the selected cache. Click any byte to request it.
-  </p>
+  <h2>Memory: <span class="note">16 blocks × 4 bytes · click a byte</span></h2>
   <div class="mem" id="mem"></div>
 
-  <p style="margin-top:1.5rem">
-    A 64-byte memory, 4-byte blocks and a 4-line cache. Pick an organisation, choose an address
-    and access it. Every access is applied to all three caches at once, letting you switch tabs to
-    compare how each one handles the same pattern.
-  </p>
+  <h2>Cache: <span class="note" id="cacheNote"></span></h2>
+  <div class="shelf" id="shelf"></div>
 
   <section class="panel" aria-label="Simulator controls">
-    <div class="seg" role="tablist" id="tabs"></div>
+    <div class="row-between">
+      <label for="ways" class="h">Ways:</label>
+      <span class="val" id="waysVal"></span>
+    </div>
+    <input type="range" id="ways" min="0" max="3" step="1" value="0">
+    <div class="scale"><span>1</span><span>2</span><span>4</span><span>8</span></div>
 
     <div class="row-between">
-      <label for="addr" class="h">Requested address</label>
-      <span class="addr-val" id="addrVal"></span>
+      <label for="addr" class="h">Address:</label>
+      <span class="val" id="addrVal"></span>
     </div>
     <input type="range" id="addr" min="0" max="63" value="8">
-    <div class="row-between scale"><span>0</span><span>63</span></div>
+    <div class="scale"><span>0</span><span>63</span></div>
 
-    <h3>Address breakdown</h3>
-    <div class="bits mono" id="bits"></div>
-    <div class="fields mono" id="fields"></div>
-    <p class="small" id="addrMeta"></p>
+    <div class="fields" id="fields"></div>
 
-    <div class="btns" style="margin-top:1.2rem">
-      <button class="primary" id="accessBtn" type="button">Access address and load block if needed</button>
+    <div class="btns">
+      <button class="primary" id="accessBtn" type="button">Access address</button>
       <button class="secondary" id="clearBtn" type="button">Clear cache</button>
     </div>
-    <p class="last" id="lastMsg" aria-live="polite" style="margin:.8rem 0 0;font-size:.93rem"></p>
+    <p class="last" id="lastMsg" aria-live="polite"></p>
   </section>
 
-  <h2 id="cacheTitle">Cache contents</h2>
-  <p class="small" id="cacheSub" style="margin:-.2rem 0 .8rem"></p>
-  <div class="cache" id="cache"></div>
-
+  <h2>Hit rate:</h2>
+  <div class="graph"><svg id="graph" role="img" aria-label="Cumulative hit rate per access"></svg></div>
 </main>
 
 <footer>
@@ -208,16 +196,13 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
   'use strict';
 
   // ---------- model ----------
-  var ORGS = {
-    direct: { key: 'direct', tab: 'Direct',       name: 'Direct mapped',           sets: 4, ways: 1 },
-    two:    { key: 'two',    tab: '2-way',        name: '2-way set associative',   sets: 2, ways: 2 },
-    fully:  { key: 'fully',  tab: 'Fully assoc.', name: 'Fully associative',       sets: 1, ways: 4 }
-  };
-  var ORDER = ['direct', 'two', 'fully'];
-  ORDER.forEach(function (k) {
-    var o = ORGS[k];
-    o.indexBits = Math.log2(o.sets);
-    o.tagBits = 4 - o.indexBits;
+  // One 8-slot cache, 16 memory blocks of 4 bytes (6-bit address).
+  // The four organisations are simulated side by side on the same requests.
+  var SLOTS = 8, WAYS = [1, 2, 4, 8];
+  var NAMES = { 1: 'direct mapped', 2: '2-way set associative', 4: '4-way set associative', 8: 'fully associative' };
+  var ORGS = WAYS.map(function (w) {
+    var sets = SLOTS / w, indexBits = Math.log2(sets);
+    return { ways: w, sets: sets, indexBits: indexBits, tagBits: 4 - indexBits };
   });
 
   function newCache(o) {
@@ -234,6 +219,7 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
     for (var i = 0; i < lines.length; i++) if (lines[i].valid && lines[i].tag === tag) { way = i; break; }
     return { set: set, tag: tag, way: way };
   }
+  // Leftmost empty slot first, otherwise the least recently used.
   function victim(lines) {
     for (var i = 0; i < lines.length; i++) if (!lines[i].valid) return i;
     var m = 0;
@@ -241,156 +227,101 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
     return m;
   }
 
-  var S = {
-    org: 'direct', addr: 8, tick: 0, seen: {}, log: [], caches: {},
-    flash: null, lastMsg: ''
-  };
+  var S = { wi: 0, addr: 8, tick: 0, caches: [], last: null, hist: [] };
   function clearCaches() {
-    ORDER.forEach(function (k) { S.caches[k] = newCache(ORGS[k]); });
-    S.tick = 0; S.seen = {}; S.log = []; S.flash = null; S.lastMsg = '';
+    S.caches = ORGS.map(newCache);
+    S.tick = 0; S.last = null; S.hist = [];
   }
   clearCaches();
 
   function accessAll(addr) {
     var block = addr >> 2;
     S.tick++;
-    var cold = !S.seen[block];
-    var fullyWouldHit = lookup(ORGS.fully, S.caches.fully, block).way >= 0;
-    var entry = { n: S.log.length + 1, addr: addr, block: block, res: {} };
-    ORDER.forEach(function (k) {
-      var o = ORGS[k], c = S.caches[k], r = lookup(o, c, block);
+    var entry = { addr: addr, block: block, res: [] };
+    ORGS.forEach(function (o, k) {
+      var c = S.caches[k], r = lookup(o, c, block);
       if (r.way >= 0) {
         c[r.set][r.way].used = S.tick;
-        entry.res[k] = { kind: 'hit', set: r.set, way: r.way };
+        entry.res.push({ hit: true, set: r.set, way: r.way, evicted: null });
       } else {
         var w = victim(c[r.set]), old = c[r.set][w];
-        var kind = cold ? 'cold' : (k !== 'fully' && fullyWouldHit) ? 'conflict' : 'capacity';
-        entry.res[k] = { kind: kind, set: r.set, way: w, evicted: old.valid ? old.block : null };
+        entry.res.push({ hit: false, set: r.set, way: w, evicted: old.valid ? old.block : null });
         c[r.set][w] = { valid: true, tag: r.tag, block: block, used: S.tick };
       }
     });
-    S.seen[block] = true;
-    S.log.push(entry);
-    var mine = entry.res[S.org];
-    S.flash = { set: mine.set, way: mine.way, hit: mine.kind === 'hit' };
-    S.lastMsg = describeResult(ORGS[S.org], entry, mine);
+    S.last = entry;
+    return entry;
   }
 
   // ---------- helpers ----------
   function bin(v, n) { var s = v.toString(2); while (s.length < n) s = '0' + s; return n === 0 ? '' : s; }
-  function lineName(o, set, way) {
-    if (o.ways === 1) return 'line ' + set;
-    if (o.sets === 1) return 'line ' + way;
-    return 'set ' + set + ', way ' + way;
-  }
-  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function describeResult(o, e, r) {
-    var where = lineName(o, r.set, r.way);
-    if (r.kind === 'hit') return '<span class="badge b-hit">HIT</span>' + esc('Address ' + e.addr + ' (block ' + e.block + ') found in ' + where + '.');
-    var s = 'Address ' + e.addr + ' (block ' + e.block + ') not cached. Block ' + e.block + ' loaded into ' + where;
-    s += r.evicted !== null ? ', replacing block ' + r.evicted + '.' : '.';
-    return '<span class="badge b-miss">MISS</span>' + esc(s);
-  }
-  function mappingHint(o, block) {
-    if (o.ways === 1) return 'idx ' + bin(block % o.sets, o.indexBits);
-    if (o.sets === 1) return 'any line';
-    return 'set ' + (block % o.sets);
-  }
-
-  // ---------- rendering ----------
-  var $ = function (id) { return document.getElementById(id); };
-
-  function renderTabs() {
-    $('tabs').innerHTML = ORDER.map(function (k) {
-      var on = k === S.org;
-      return '<button type="button" role="tab" data-org="' + k + '" aria-selected="' + on + '">' + ORGS[k].tab + '</button>';
-    }).join('');
-  }
-
-  function renderAddress() {
-    var o = ORGS[S.org], a = S.addr, block = a >> 2, off = a & 3;
-    var set = block % o.sets, tag = Math.floor(block / o.sets);
-    $('addrVal').textContent = a;
-    $('addr').value = a;
-    var b = bin(a, 6), html = '';
-    for (var i = 0; i < 6; i++) {
-      var pos = 5 - i;
-      var cls = pos < 2 ? 'f-off' : pos < 2 + o.indexBits ? 'f-idx' : 'f-tag';
-      html += '<div class="bit ' + cls + '"><small>a' + pos + '</small>' + b[i] + '</div>';
-    }
-    $('bits').innerHTML = html;
-    var f = [{ c: 'f-tag', l: 'Tag', bits: o.tagBits, v: tag }];
-    if (o.indexBits) f.push({ c: 'f-idx', l: 'Index', bits: o.indexBits, v: set });
-    f.push({ c: 'f-off', l: 'Offset', bits: 2, v: off });
-    $('fields').innerHTML = f.map(function (x) {
-      return '<div class="field ' + x.c + '" style="flex:' + x.bits + ' 1 0">' +
-        '<div class="v">' + bin(x.v, x.bits) + '</div><div class="l">' + x.l + ' = ' + x.v + '</div></div>';
-    }).join('');
-    $('addrMeta').textContent = 'Binary address: ' + b + ' · Memory block: ' + block + ' (bytes ' + (block * 4) + '-' + (block * 4 + 3) + ') · Byte ' + off + ' within the block';
-  }
-
-  function renderLocation() {
-    $('lastMsg').innerHTML = S.lastMsg;
-  }
-
   function lruWay(lines) {
     if (lines.length < 2) return -1;
     for (var i = 0; i < lines.length; i++) if (!lines[i].valid) return -1;
     return victim(lines);
   }
+  var $ = function (id) { return document.getElementById(id); };
+  var fadeTimer = null;
 
-  function renderCache() {
-    var o = ORGS[S.org], c = S.caches[S.org], block = S.addr >> 2, r = lookup(o, c, block);
-    $('cacheTitle').textContent = 'Cache contents: ' + o.name.toLowerCase();
-    $('cacheSub').textContent = o.sets + (o.sets === 1 ? ' set' : ' sets') + ' × ' + o.ways + (o.ways === 1 ? ' way' : ' ways') +
-      ', 4 bytes per line' + (o.ways > 1 ? ', LRU replacement.' : '.') + ' The outlined set is the one the requested address maps to.';
-    var flash = S.flash; S.flash = null;
+  // ---------- rendering ----------
+  function renderControls() {
+    var o = ORGS[S.wi], a = S.addr, block = a >> 2;
+    $('ways').value = S.wi;
+    $('ways').setAttribute('aria-valuetext', o.ways + ' ways, ' + NAMES[o.ways]);
+    $('waysVal').textContent = NAMES[o.ways];
+    $('addrVal').textContent = '0x' + (a < 16 ? '0' : '') + a.toString(16).toUpperCase() + ' = ' + a;
+    $('addr').value = a;
+    var f = [{ c: 'f-tag', l: 'Tag', bits: o.tagBits, v: Math.floor(block / o.sets) }];
+    if (o.indexBits) f.push({ c: 'f-idx', l: 'Index', bits: o.indexBits, v: block % o.sets });
+    f.push({ c: 'f-off', l: 'Offset', bits: 2, v: a & 3 });
+    $('fields').innerHTML = f.map(function (x) {
+      return '<div class="field ' + x.c + '" style="flex:' + x.bits + ' 1 0">' +
+        '<div class="v">' + bin(x.v, x.bits) + '</div><div class="l">' + x.l + ' = ' + x.v + '</div></div>';
+    }).join('');
+
+    var e = S.last, msg = '';
+    if (e) {
+      var r = e.res[S.wi];
+      msg = r.hit
+        ? '<span class="badge b-hit">HIT</span>B' + e.block + ' in set ' + r.set
+        : '<span class="badge b-miss">MISS</span>B' + e.block + ' → set ' + r.set + (r.evicted !== null ? ', evicted B' + r.evicted : '');
+    }
+    var el = $('lastMsg');
+    el.innerHTML = msg;
+    clearTimeout(fadeTimer);
+    el.classList.remove('fade');
+    if (msg) fadeTimer = setTimeout(function () { el.classList.add('fade'); }, 1000);
+  }
+
+  function renderShelf() {
+    var o = ORGS[S.wi], c = S.caches[S.wi], r = lookup(o, c, S.addr >> 2);
+    var pulse = S.pulse && S.last && S.last.res[S.wi].hit;
+    S.pulse = false;
+    $('cacheNote').textContent = o.sets + (o.sets === 1 ? ' set' : ' sets') + ' × ' + o.ways + (o.ways === 1 ? ' way' : ' ways');
     var html = '';
     for (var s = 0; s < o.sets; s++) {
       var lines = c[s], lru = lruWay(lines);
-      var label = o.ways === 1 ? '<b>Index ' + bin(s, o.indexBits) + '</b><span>line ' + s + '</span>'
-                : o.sets === 1 ? '<b>One set</b><span>any line</span>'
-                : '<b>Set ' + bin(s, o.indexBits) + '</b><span>' + o.ways + ' ways</span>';
-      html += '<div class="set' + (s === r.set ? ' indexed' : '') + '"><div class="set-label">' + label + '</div>';
-      html += '<div class="lines w' + o.ways + '" style="--ways:' + o.ways + '">';
+      html += '<div class="set' + (s === r.set ? ' indexed' : '') + '" style="flex-grow:' + o.ways + '">' +
+        '<div class="slots" style="grid-template-columns:repeat(' + o.ways + ', minmax(0, 1fr))">';
       for (var w = 0; w < o.ways; w++) {
-        var L = lines[w], cls = 'line';
-        if (s === r.set && w === r.way) cls += ' match';
-        if (flash && flash.set === s && flash.way === w) cls += flash.hit ? ' flash-hit' : ' flash-miss';
-        var nm = o.ways === 1 ? 'Line ' + s : o.sets === 1 ? 'Line ' + w : 'Way ' + w;
-        html += '<div class="' + cls + '"><div class="line-top"><span class="line-name">' + nm + '</span>' +
-          (w === lru ? '<span class="lru" title="Least recently used: next to be evicted">LRU</span>' : '') + '</div>';
-        if (L.valid) {
-          html += '<div class="line-info">V <span class="vb">1</span> · tag <span class="t vb">' + bin(L.tag, o.tagBits) + '</span> · block ' + L.block + '</div>';
-        } else {
-          html += '<div class="line-info">V <span class="vb">0</span> · empty</div>';
-        }
-        html += '<div class="bytes">';
-        for (var i = 0; i < 4; i++) {
-          if (!L.valid) { html += '<div class="byte empty">-</div>'; continue; }
-          var ad = L.block * 4 + i;
-          html += '<div class="byte' + (s === r.set && w === r.way && ad === S.addr ? ' req' : '') + '">' + ad + '</div>';
-        }
-        html += '</div></div>';
+        var L = lines[w];
+        if (!L.valid) { html += '<div class="book"></div>'; continue; }
+        html += '<div class="book full' + (s === r.set && w === r.way ? ' match' + (pulse ? ' pulse' : '') : '') + '">' +
+          '<span class="bt">' + bin(L.tag, o.tagBits) + '</span><span class="bb">B' + L.block + '</span>' +
+          '<span class="lru">' + (w === lru ? 'LRU' : '') + '</span></div>';
       }
-      html += '</div></div>';
+      html += '</div>' + '<div class="set-idx">' + s + '</div>' + '</div>';
     }
-    $('cache').innerHTML = html;
+    $('shelf').innerHTML = html;
   }
 
   function renderMemory() {
-    var o = ORGS[S.org], c = S.caches[S.org], where = {};
-    for (var s = 0; s < o.sets; s++) for (var w = 0; w < o.ways; w++) {
-      var L = c[s][w];
-      if (L.valid) where[L.block] = o.ways === 1 ? 'line ' + s : o.sets === 1 ? 'line ' + w : 's' + s + ' w' + w;
-    }
+    var o = ORGS[S.wi], c = S.caches[S.wi], cached = {};
+    c.forEach(function (lines) { lines.forEach(function (L) { if (L.valid) cached[L.block] = true; }); });
     var reqB = S.addr >> 2, html = '';
     for (var b = 0; b < 16; b++) {
-      var cached = where[b] !== undefined;
-      html += '<div class="blk' + (cached ? ' cached' : '') + (b === reqB ? ' reqb' : '') + '">' +
-        '<div class="blk-top"><b>Block ' + b + '</b><span class="' + (cached ? 'where' : '') + '">' +
-        (cached ? where[b] : mappingHint(o, b)) + '</span></div><div class="bytes">';
+      html += '<div class="blk' + (cached[b] ? ' cached' : '') + (b === reqB ? ' reqb' : '') + '">' +
+        '<div class="blk-name">B' + b + '</div><div class="bytes">';
       for (var i = 0; i < 4; i++) {
         var ad = b * 4 + i;
         html += '<button type="button" class="byte' + (ad === S.addr ? ' req' : '') + '" data-addr="' + ad + '" aria-label="Address ' + ad + '">' + ad + '</button>';
@@ -400,20 +331,56 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
     $('mem').innerHTML = html;
   }
 
-  function render() {
-    renderTabs(); renderAddress(); renderLocation(); renderCache(); renderMemory();
+  // Cumulative hit rate: the point at cycle c is the hit rate (%) over the first c + 1 accesses.
+  function niceStep(n) {
+    for (var m = 1; ; m *= 10) {
+      if (n / m <= 8) return m;
+      if (n / (2 * m) <= 8) return 2 * m;
+      if (n / (5 * m) <= 8) return 5 * m;
+    }
+  }
+  function renderGraph() {
+    var svg = $('graph'), W = svg.clientWidth, H = svg.clientHeight, L = 34, R = 14, T = 23, B = 38;
+    var n = S.hist.length, xmax = Math.max(n - 1, 1), pw = W - L - R, ph = H - T - B;
+    function X(k) { return L + k / xmax * pw; }
+    function Y(v) { return T + (100 - v) / 100 * ph; }
+    var h = '<line class="g-axis" x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + ph) + '"/>' +
+            '<line class="g-axis" x1="' + L + '" y1="' + (T + ph) + '" x2="' + (L + pw) + '" y2="' + (T + ph) + '"/>';
+    [0, 50, 100].forEach(function (v) {
+      h += '<line class="g-axis" x1="' + (L - 4) + '" y1="' + Y(v) + '" x2="' + L + '" y2="' + Y(v) + '"/>' +
+           '<text class="g-lbl" x="' + (L - 7) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '</text>';
+    });
+    var step = niceStep(xmax);
+    for (var k = 0; k <= Math.max(n - 1, 0); k += step) {
+      h += '<line class="g-axis" x1="' + X(k) + '" y1="' + (T + ph) + '" x2="' + X(k) + '" y2="' + (T + ph + 4) + '"/>' +
+           '<text class="g-lbl" x="' + X(k) + '" y="' + (T + ph + 17) + '" text-anchor="middle">' + k + '</text>';
+    }
+    h += '<text class="g-lbl" x="' + (L + pw / 2) + '" y="' + (H - 4) + '" text-anchor="middle" id="g-xtitle">time (cycles)</text>';
+    var hits = 0, pts = [];
+    for (var i = 0; i < n; i++) { if (S.hist[i]) hits++; pts.push([X(i), Y(100 * hits / (i + 1))]); }
+    if (n > 1) h += '<polyline class="g-line" points="' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' ') + '"/>';
+    pts.forEach(function (p, j) {
+      // dots only while they stay apart; the latest point always gets one
+      if (pw / xmax >= 6 || j === n - 1) h += '<circle class="g-dot" cx="' + p[0] + '" cy="' + p[1] + '" r="3"/>';
+    });
+    svg.innerHTML = h;
   }
 
+  function render() { renderControls(); renderShelf(); renderMemory(); renderGraph(); }
+
   // ---------- events ----------
-  function setOrg(k) { if (ORGS[k] && k !== S.org) { S.org = k; S.lastMsg = ''; render(); } }
-  $('tabs').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setOrg(b.dataset.org); });
-  $('addr').addEventListener('input', function () { S.addr = +this.value; S.lastMsg = ''; render(); });
+  function setAddr(a) { S.addr = a; S.last = null; render(); }
+  $('ways').addEventListener('input', function () { S.wi = +this.value; S.hist = []; render(); });
+  $('addr').addEventListener('input', function () { setAddr(+this.value); });
   $('mem').addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-addr]'); if (!b) return;
-    S.addr = +b.dataset.addr; S.lastMsg = ''; render();
+    var b = e.target.closest('button[data-addr]'); if (b) setAddr(+b.dataset.addr);
   });
-  $('accessBtn').addEventListener('click', function () { accessAll(S.addr); render(); });
+  $('accessBtn').addEventListener('click', function () {
+    accessAll(S.addr); S.hist.push(S.last.res[S.wi].hit); S.pulse = true; render();
+  });
+  window.addEventListener('resize', renderGraph);
   $('clearBtn').addEventListener('click', function () { clearCaches(); render(); });
+
   // ---------- theme toggle (matches the site's) ----------
   (function () {
     var root = document.documentElement, btn = $('theme-toggle');
@@ -431,7 +398,7 @@ button.secondary:not(:disabled):hover { border-color: var(--muted); }
   render();
 
   // Exposed for testing only.
-  window.__cacheSim = { S: S, accessAll: accessAll, clearCaches: clearCaches, ORGS: ORGS };
+  window.__cacheSim = { S: S, accessAll: accessAll, clearCaches: clearCaches, ORGS: ORGS, render: render };
 })();
 </script>
 </body>

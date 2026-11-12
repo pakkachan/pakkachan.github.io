@@ -2,23 +2,83 @@
 layout: default
 ---
 
-<p class="intro">
-  Hi there. I'm Aaron. Originally from NZ, I moved to Australia to study a
-  Bachelor of Electrical Engineering at USYD (graduating mid 2028). I'm
-  interested in FPGAs and anything computing really.
-</p>
+{% comment %}
+  Front page menu. Clicking a heading opens its links and closes the others;
+  clicking the open heading closes it.
+  Blogs lists the posts and the pages in _data/interactive.yml, newest first.
+  Each row is "YYYY-MM-DD|~|url|~|title".
+{% endcomment %}
+{%- capture rows -%}
+  {%- for post in site.posts -%}{{ post.date | date: "%Y-%m-%d" }}|~|{{ post.url }}|~|{{ post.title }}@@{%- endfor -%}
+  {%- for item in site.data.interactive -%}{{ item.date | date: "%Y-%m-%d" }}|~|{{ item.url }}|~|{{ item.title }}@@{%- endfor -%}
+{%- endcapture -%}
+{%- assign rows = rows | split: "@@" | sort | reverse -%}
 
-<h2>Writing</h2>
+<div class="menu">
+  <div class="menu-group open">
+    <button class="menu-head" type="button" aria-expanded="true" aria-controls="menu-home">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Home</span>
+    </button>
+    <div class="menu-roll" id="menu-home"><ul class="menu-sub">
+      <li><a href="{{ site.baseurl }}/about/">About me</a></li>
+    </ul></div>
+  </div>
 
-{% if site.posts.size == 0 %}
-  <p>Nothing published yet.</p>
-{% else %}
-  <ul class="postlist">
-    {% for post in site.posts %}
-      <li>
-        <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%Y-%m-%d" }}</time>
-        <a href="{{ site.baseurl }}{{ post.url }}">{{ post.title }}</a>
-      </li>
-    {% endfor %}
-  </ul>
-{% endif %}
+  <div class="menu-group">
+    <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-blogs">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Blogs</span>
+    </button>
+    <div class="menu-roll" id="menu-blogs"><ul class="menu-sub">
+      {%- for row in rows %}
+        {%- assign parts = row | split: "|~|" %}
+      <li><a href="{{ site.baseurl }}{{ parts[1] }}">{{ parts[2] }}</a></li>
+      {%- endfor %}
+    </ul></div>
+  </div>
+
+  {% comment %} No Art links yet. {% endcomment %}
+  <div class="menu-group">
+    <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-art">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Art</span>
+    </button>
+    <div class="menu-roll" id="menu-art"><ul class="menu-sub">
+    </ul></div>
+  </div>
+
+  {% comment %} CV, LinkedIn and Email point to # until the real links are in. {% endcomment %}
+  <div class="menu-group">
+    <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-career">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Career</span>
+    </button>
+    <div class="menu-roll" id="menu-career"><ul class="menu-sub">
+      <li><a href="#">CV</a></li>
+    </ul></div>
+  </div>
+
+  <div class="menu-group">
+    <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-contact">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Contact</span>
+    </button>
+    <div class="menu-roll" id="menu-contact"><ul class="menu-sub">
+      <li><a href="#">LinkedIn</a></li>
+      <li><a href="https://github.com/{{ site.github }}">Github</a></li>
+      <li><a href="#">Email</a></li>
+    </ul></div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var groups = document.querySelectorAll('.menu-group');
+    Array.prototype.forEach.call(groups, function (g) {
+      g.querySelector('.menu-head').addEventListener('click', function () {
+        var opening = !g.classList.contains('open');
+        Array.prototype.forEach.call(groups, function (o) {
+          var on = o === g && opening;
+          o.classList.toggle('open', on);
+          o.querySelector('.menu-head').setAttribute('aria-expanded', String(on));
+        });
+      });
+    });
+  })();
+</script>

@@ -1,0 +1,337 @@
+---
+layout: page
+title: "Bode Nyquist"
+permalink: /bode-nyquist/
+---
+
+<!-- bode-nyquist widget: styles start -->
+<style>
+#bn{font-size:.9rem}
+#bn .bn-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 12px}
+#bn label{color:var(--muted);font-size:.85rem}
+#bn select,#bn button{font:inherit;font-size:.8rem;color:var(--fg);background:var(--bg);border:1px solid var(--rule);border-radius:1px;padding:.3rem .6rem;cursor:pointer}
+#bn select{max-width:100%}
+#bn button:hover{border-color:var(--muted)}
+#bn button[aria-pressed="true"]{border-color:var(--link);color:var(--link)}
+#bn input[type=range]{flex:1;min-width:0;accent-color:var(--link)}
+#bn .bn-wout{min-width:7.5rem;text-align:right;font-variant-numeric:tabular-nums}
+#bn .bn-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
+#bn .bn-cap{font-size:.75rem;color:var(--muted);margin:0 0 4px}
+#bn .bn-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:12px}
+#bn .bn-m{background:var(--codebg);border-radius:1px;padding:.45rem .6rem}
+#bn .bn-m span{display:block;font-size:.7rem;color:var(--muted)}
+#bn .bn-m b{font-weight:normal;font-size:.9rem;font-variant-numeric:tabular-nums}
+#bn .bn-gm{border-left:3px solid #1baf7a;border-radius:0}
+#bn .bn-pm{border-left:3px solid #6250d6;border-radius:0}
+#bn .bn-leg{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:.75rem;color:var(--muted)}
+#bn .bn-leg span{display:flex;align-items:center;gap:6px}
+#bn .bn-sw{width:10px;height:10px;border-radius:1px}
+#bn canvas{display:block}
+@media(max-width:560px){#bn .bn-grid{grid-template-columns:minmax(0,1fr)}}
+</style>
+<!-- bode-nyquist widget: styles end -->
+
+<!-- bode-nyquist widget: markup start -->
+<div id="bn">
+  <div class="bn-row">
+    <label for="bn-sys">G(s): </label>
+    <select id="bn-sys">
+      <option value="wide">2 / (s+1)³ (wide margins)</option>
+      <option value="unst">12 / (s+1)³ (unstable)</option>
+      <option value="third">30 / ((s+1)(s+2)(s+3))</option>
+      <option value="first">1 / (s+1)</option>
+      <option value="second">1 / (s² + 0.4s + 1)</option>
+      <option value="lag">10(s+1) / ((s+0.1)(s+10))</option>
+    </select>
+    <button id="bn-play" type="button">Sweep frequency</button>
+    <button id="bn-mg" type="button" aria-pressed="false">Show margins</button>
+    <button id="bn-zm" type="button" aria-pressed="false">Zoom to unit circle</button>
+  </div>
+  <div class="bn-row">
+    <label for="bn-w">ω</label>
+    <input type="range" id="bn-w" min="0" max="1000" step="1" value="450">
+    <span id="bn-wout" class="bn-wout"></span>
+  </div>
+  <div class="bn-grid">
+    <div>
+      <div class="bn-cap">Bode magnitude (dB)</div>
+      <div><canvas id="bn-cm" role="img" aria-label="Bode magnitude plot"></canvas></div>
+      <div class="bn-cap" style="margin-top:8px">Bode phase (deg)</div>
+      <div><canvas id="bn-cp" role="img" aria-label="Bode phase plot"></canvas></div>
+    </div>
+    <div>
+      <div class="bn-cap">Nyquist</div>
+      <div><canvas id="bn-cn" role="img" aria-label="Nyquist plot"></canvas></div>
+    </div>
+  </div>
+  <div class="bn-cards">
+    <div class="bn-m"><span>|G| (dB)</span><b id="bn-rdb"></b></div>
+    <div class="bn-m"><span>|G| = 10^(dB/20)</span><b id="bn-rmag"></b></div>
+    <div class="bn-m"><span>∠G</span><b id="bn-rph"></b></div>
+    <div class="bn-m"><span>Re = |G|cos∠G</span><b id="bn-rre"></b></div>
+    <div class="bn-m"><span>Im = |G|sin∠G</span><b id="bn-rim"></b></div>
+  </div>
+  <div id="bn-mpanel" style="margin-top:8px">
+    <div class="bn-cards" style="margin-top:0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))">
+      <div class="bn-m bn-gm"><span>Gain margin</span><b id="bn-gmv"></b></div>
+      <div class="bn-m bn-gm"><span>ω_pc (∠G = -180°)</span><b id="bn-wpc"></b></div>
+      <div class="bn-m bn-pm"><span>Phase margin</span><b id="bn-pmv"></b></div>
+      <div class="bn-m bn-pm"><span>ω_gc (|G| = 0 dB)</span><b id="bn-wgc"></b></div>
+      <div class="bn-m"><span>Closed loop</span><b id="bn-stab"></b></div>
+    </div>
+    <div class="bn-row" style="margin:8px 0 0">
+      <button id="bn-jpc" type="button">Jump to ω_pc</button>
+      <button id="bn-jgc" type="button">Jump to ω_gc</button>
+    </div>
+  </div>
+  <div class="bn-leg">
+    <span><span style="width:14px;height:2px;background:#2a78d6"></span>ω from 0 to current</span>
+    <span><span style="width:14px;border-top:2px dashed #2a78d6;opacity:.5"></span>negative ω (mirror)</span>
+    <span><span class="bn-sw" style="background:#eb6834"></span>current ω</span>
+    <span class="bn-mleg"><span class="bn-sw" style="background:#1baf7a"></span>gain margin</span>
+    <span class="bn-mleg"><span class="bn-sw" style="background:#6250d6"></span>phase margin</span>
+  </div>
+</div>
+<!-- bode-nyquist widget: markup end -->
+
+<!-- bode-nyquist widget: script start -->
+<script>
+(function () {
+  var S = {
+    wide:   {K: 2,  z: [],       p: [[-1,0],[-1,0],[-1,0]],     a: .01,  b: 100},
+    unst:   {K: 12, z: [],       p: [[-1,0],[-1,0],[-1,0]],     a: .01,  b: 100},
+    first:  {K: 1,  z: [],       p: [[-1,0]],                   a: .01,  b: 100},
+    third:  {K: 30, z: [],       p: [[-1,0],[-2,0],[-3,0]],     a: .01,  b: 100},
+    second: {K: 1,  z: [],       p: [[-.2,.9798],[-.2,-.9798]], a: .01,  b: 100},
+    lag:    {K: 10, z: [[-1,0]], p: [[-.1,0],[-10,0]],          a: .001, b: 1000}
+  };
+  var sys = S.wide, curve = [], showM = false, zoom = false, PC = null, GC = null, anim = null;
+  var BLUE = '#2a78d6', OR = '#eb6834', GMC = '#1baf7a', PMC = '#6250d6', RED = '#e34948', D = 180 / Math.PI;
+  var FONT = '11px "Helvetica Neue", Helvetica, Arial, sans-serif';
+  function $(id) { return document.getElementById('bn-' + id); }
+  function cssv(v, f) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || f; }
+  function la() { return Math.log10(sys.a); }
+  function lb() { return Math.log10(sys.b); }
+
+  function G(w) {
+    var m = sys.K, ph = 0, i, q;
+    for (i = 0; i < sys.z.length; i++) { q = sys.z[i]; m *= Math.hypot(-q[0], w - q[1]); ph += Math.atan2(w - q[1], -q[0]); }
+    for (i = 0; i < sys.p.length; i++) { q = sys.p[i]; m /= Math.hypot(-q[0], w - q[1]); ph -= Math.atan2(w - q[1], -q[0]); }
+    return {w: w, m: m, db: 20 * Math.log10(m), ph: ph, re: m * Math.cos(ph), im: m * Math.sin(ph)};
+  }
+  function cross(f, t) {
+    for (var i = 0; i < curve.length - 1; i++) {
+      var a = f(curve[i]) - t, b = f(curve[i + 1]) - t;
+      if (a > 0 && b <= 0) {
+        var u = a / (a - b), l0 = Math.log10(curve[i].w), l1 = Math.log10(curve[i + 1].w);
+        return G(Math.pow(10, l0 + u * (l1 - l0)));
+      }
+    }
+    return null;
+  }
+  function build() {
+    curve = [];
+    for (var i = 0; i <= 700; i++) curve.push(G(Math.pow(10, la() + (lb() - la()) * i / 700)));
+    PC = cross(function (p) { return p.ph * D; }, -180);
+    GC = cross(function (p) { return p.db; }, 0);
+  }
+  function stable() { return (!PC || PC.m < 1) && (!GC || GC.ph * D + 180 > 0); }
+  function wOf(v) { return Math.pow(10, la() + (lb() - la()) * v / 1000); }
+  function vOf(w) { return Math.round(1000 * (Math.log10(w) - la()) / (lb() - la())); }
+  function fmt(v, n) {
+    if (n === undefined) n = 2;
+    var a = Math.abs(v);
+    if (a >= 1000 || (a < 0.01 && a > 0)) return v.toExponential(1);
+    return v.toFixed(n);
+  }
+  function setup(c, h) {
+    var d = window.devicePixelRatio || 1, w = c.parentElement.clientWidth;
+    c.width = w * d; c.height = h * d; c.style.width = w + 'px'; c.style.height = h + 'px';
+    var x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0);
+    return {x: x, w: w, h: h};
+  }
+  function rrect(x, a, b, w, h) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h, 1); else x.rect(a, b, w, h); }
+  function tag(x, t, cx, cy, col, bx) {
+    x.font = FONT;
+    var tw = x.measureText(t).width + 8, lx = cx + 8;
+    if (lx + tw > bx[1]) lx = cx - 8 - tw;
+    if (lx < bx[0]) lx = bx[0];
+    var ly = Math.min(Math.max(cy - 8, bx[2]), bx[3] - 16);
+    x.fillStyle = col; rrect(x, lx, ly, tw, 16); x.fill();
+    x.fillStyle = '#fff'; x.textAlign = 'left'; x.fillText(t, lx + 4, ly + 12);
+  }
+  function bracket(x, px, y1, y2, col) {
+    x.strokeStyle = col; x.lineWidth = 2.2; x.beginPath();
+    x.moveTo(px, y1); x.lineTo(px, y2);
+    x.moveTo(px - 5, y1); x.lineTo(px + 5, y1);
+    x.moveTo(px - 5, y2); x.lineTo(px + 5, y2);
+    x.stroke();
+  }
+  function dot(x, a, b, r, col) { x.fillStyle = col; x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }
+
+  function bode(c, key, cur, step, unit) {
+    var o = setup(c, 170), x = o.x, w = o.w, h = o.h, L = 46, R = 20, T = 8, B = 22, pw = w - L - R, ph = h - T - B;
+    var bx = [L, L + pw, T, T + ph], tx = cssv('--muted', '#6a6a6a'), gr = cssv('--rule', '#ddd');
+    var vals = curve.map(function (p) { return key === 'ph' ? p.ph * D : p.db; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), ref = key === 'ph' ? -180 : 0;
+    if (showM) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); }
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step; if (hi - lo < step) hi = lo + step;
+    function X(v) { return L + (Math.log10(v) - la()) / (lb() - la()) * pw; }
+    function Y(v) { return T + (hi - v) / (hi - lo) * ph; }
+    x.font = FONT; x.lineWidth = 1;
+    for (var d = Math.ceil(la()); d <= lb(); d++) {
+      var px = X(Math.pow(10, d));
+      x.strokeStyle = gr; x.beginPath(); x.moveTo(px, T); x.lineTo(px, T + ph); x.stroke();
+      x.fillStyle = tx; x.textAlign = 'center'; x.fillText(d === 0 ? '1' : d === 1 ? '10' : '10^' + d, px, h - 6);
+    }
+    for (var v = lo; v <= hi + 1e-9; v += step) {
+      var py = Y(v);
+      x.strokeStyle = gr; x.beginPath(); x.moveTo(L, py); x.lineTo(L + pw, py); x.stroke();
+      x.fillStyle = tx; x.textAlign = 'right'; x.fillText(String(Math.round(v)), L - 6, py + 4);
+    }
+    if (showM) { x.strokeStyle = tx; x.lineWidth = 1.2; x.setLineDash([6, 4]); x.beginPath(); x.moveTo(L, Y(ref)); x.lineTo(L + pw, Y(ref)); x.stroke(); x.setLineDash([]); }
+    x.strokeStyle = BLUE; x.lineWidth = 2; x.lineJoin = 'round'; x.beginPath();
+    curve.forEach(function (p, i) { if (i) x.lineTo(X(p.w), Y(vals[i])); else x.moveTo(X(p.w), Y(vals[i])); });
+    x.stroke();
+    if (showM) {
+      x.setLineDash([2, 3]); x.lineWidth = 1;
+      if (PC) { x.strokeStyle = GMC; x.beginPath(); x.moveTo(X(PC.w), T); x.lineTo(X(PC.w), T + ph); x.stroke(); }
+      if (GC) { x.strokeStyle = PMC; x.beginPath(); x.moveTo(X(GC.w), T); x.lineTo(X(GC.w), T + ph); x.stroke(); }
+      x.setLineDash([]);
+      if (key === 'db') {
+        if (PC) { bracket(x, X(PC.w), Y(PC.db), Y(0), GMC); tag(x, 'GM ' + fmt(-PC.db, 1) + ' dB', X(PC.w), (Y(PC.db) + Y(0)) / 2, GMC, bx); }
+        if (GC) dot(x, X(GC.w), Y(0), 4.5, PMC);
+      } else {
+        if (GC) { var pd = GC.ph * D; bracket(x, X(GC.w), Y(pd), Y(-180), PMC); tag(x, 'PM ' + fmt(pd + 180, 1) + '°', X(GC.w), (Y(pd) + Y(-180)) / 2, PMC, bx); }
+        if (PC) dot(x, X(PC.w), Y(-180), 4.5, GMC);
+      }
+    }
+    var cv = key === 'ph' ? cur.ph * D : cur.db, cx = X(cur.w), cy = Y(cv);
+    x.setLineDash([3, 3]); x.strokeStyle = OR; x.lineWidth = 1; x.beginPath();
+    x.moveTo(cx, T); x.lineTo(cx, T + ph); x.moveTo(L, cy); x.lineTo(cx, cy); x.stroke(); x.setLineDash([]);
+    dot(x, cx, cy, 5, OR);
+    tag(x, fmt(cv, 1) + unit, cx, cy - 12, OR, bx);
+  }
+
+  function nyq(cur, idx) {
+    var c = $('cn'), hh = window.innerWidth < 560 ? 300 : 374;
+    var o = setup(c, hh), x = o.x, w = o.w, h = o.h, pad = 22;
+    var tx = cssv('--muted', '#6a6a6a'), gr = cssv('--rule', '#ddd'), x0, x1, y0, y1, i, p;
+    if (zoom) { x0 = Math.min(-1.7, PC ? PC.re - .35 : -1.7); x1 = 1.35; y0 = -1.45; y1 = 1.45; }
+    else {
+      var xs = curve.map(function (q) { return q.re; }).concat([-1, 0]);
+      var ys = curve.map(function (q) { return q.im; }).concat(curve.map(function (q) { return -q.im; }), [0]);
+      if (showM) { xs.push(1); ys.push(1, -1); }
+      x0 = Math.min.apply(null, xs); x1 = Math.max.apply(null, xs); y0 = Math.min.apply(null, ys); y1 = Math.max.apply(null, ys);
+      var mx = (x1 - x0) * .08 || .5, my = (y1 - y0) * .08 || .5; x0 -= mx; x1 += mx; y0 -= my; y1 += my;
+    }
+    var s = Math.min((w - 2 * pad) / (x1 - x0), (h - 2 * pad) / (y1 - y0)), ox = w / 2 - (x0 + x1) / 2 * s, oy = h / 2 + (y0 + y1) / 2 * s;
+    function X(v) { return ox + v * s; }
+    function Y(v) { return oy - v * s; }
+    var bx = [0, w, 0, h];
+    x.strokeStyle = gr; x.lineWidth = 1; x.beginPath();
+    x.moveTo(0, Y(0)); x.lineTo(w, Y(0)); x.moveTo(X(0), 0); x.lineTo(X(0), h); x.stroke();
+    x.fillStyle = tx; x.font = FONT; x.textAlign = 'right'; x.fillText('Re', w - 4, Y(0) - 6); x.textAlign = 'left'; x.fillText('Im', X(0) + 6, 12);
+    if (showM || zoom) { x.strokeStyle = tx; x.lineWidth = 1; x.setLineDash([4, 4]); x.beginPath(); x.arc(X(0), Y(0), s, 0, 7); x.stroke(); x.setLineDash([]); }
+    var m1x = X(-1), m1y = Y(0), bad = showM && !stable();
+    if (bad) { x.fillStyle = 'rgba(227,73,72,.15)'; x.beginPath(); x.arc(m1x, m1y, 14, 0, 7); x.fill(); }
+    x.strokeStyle = RED; x.lineWidth = 1.8; x.beginPath();
+    x.moveTo(m1x - 4, m1y - 4); x.lineTo(m1x + 4, m1y + 4); x.moveTo(m1x + 4, m1y - 4); x.lineTo(m1x - 4, m1y + 4); x.stroke();
+    x.fillStyle = bad ? RED : tx; x.textAlign = 'center'; x.fillText('-1', m1x, m1y - 10); if (bad) { x.font = FONT; x.fillText('-1 encircled', m1x, m1y + 62); }
+
+    x.globalAlpha = .45; x.setLineDash([5, 4]); x.strokeStyle = BLUE; x.lineWidth = 1.5; x.beginPath();
+    curve.forEach(function (q, k) { if (k) x.lineTo(X(q.re), Y(-q.im)); else x.moveTo(X(q.re), Y(-q.im)); }); x.stroke(); x.setLineDash([]);
+    x.globalAlpha = .25; x.beginPath();
+    curve.forEach(function (q, k) { if (k) x.lineTo(X(q.re), Y(q.im)); else x.moveTo(X(q.re), Y(q.im)); }); x.stroke(); x.globalAlpha = 1;
+    x.strokeStyle = BLUE; x.lineWidth = 2.2; x.lineJoin = 'round'; x.beginPath();
+    for (i = 0; i <= idx; i++) { p = curve[i]; if (i) x.lineTo(X(p.re), Y(p.im)); else x.moveTo(X(p.re), Y(p.im)); }
+    x.lineTo(X(cur.re), Y(cur.im)); x.stroke();
+
+    if (showM) {
+      if (PC) {
+        var a = X(PC.re), b = X(-1), yy = Y(0) + 14;
+        x.strokeStyle = GMC; x.lineWidth = 2.4; x.beginPath();
+        x.moveTo(a, yy); x.lineTo(b, yy); x.moveTo(a, yy - 5); x.lineTo(a, yy + 5); x.moveTo(b, yy - 5); x.lineTo(b, yy + 5); x.stroke();
+        dot(x, a, Y(0), 4.5, GMC);
+        tag(x, 'GM ' + fmt(-PC.db, 1) + ' dB', (a + b) / 2 - 34, yy + 24, GMC, bx);
+      }
+      if (GC) {
+        var gx = X(GC.re), gy = Y(GC.im), pmv = GC.ph * D + 180;
+        x.strokeStyle = PMC; x.lineWidth = 1.5; x.setLineDash([3, 3]); x.beginPath();
+        x.moveTo(X(0), Y(0)); x.lineTo(gx, gy); x.moveTo(X(0), Y(0)); x.lineTo(X(-1), Y(0)); x.stroke(); x.setLineDash([]);
+        x.lineWidth = 3; x.beginPath(); x.arc(X(0), Y(0), s, Math.PI, -GC.ph, pmv >= 0); x.stroke();
+        dot(x, gx, gy, 4.5, PMC);
+        var mid = Math.PI + (-GC.ph - Math.PI) / 2;
+        tag(x, 'PM ' + fmt(pmv, 1) + '°', X(0) + (s + 26) * Math.cos(mid) - 44, Y(0) + (s + 26) * Math.sin(mid) - 14, PMC, bx);
+      }
+    }
+
+    var px = X(cur.re), py = Y(cur.im);
+    x.setLineDash([3, 3]); x.strokeStyle = tx; x.lineWidth = 1; x.globalAlpha = .7; x.beginPath();
+    x.moveTo(px, py); x.lineTo(px, Y(0)); x.moveTo(px, py); x.lineTo(X(0), py); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+    x.strokeStyle = OR; x.lineWidth = 2; x.beginPath(); x.moveTo(X(0), Y(0)); x.lineTo(px, py); x.stroke();
+    var len = Math.hypot(px - X(0), py - Y(0)), r = Math.max(10, Math.min(34, len * .5));
+    x.lineWidth = 1.5; x.beginPath(); x.arc(X(0), Y(0), r, 0, -cur.ph, cur.ph > 0); x.stroke();
+    var md = -cur.ph / 2;
+    x.fillStyle = OR; x.font = FONT; x.textAlign = 'left';
+    x.fillText('∠G', X(0) + (r + 6) * Math.cos(md) - 6, Y(0) + (r + 6) * Math.sin(md) + 4);
+    dot(x, px, py, 5.5, OR);
+    var ang = Math.atan2(py - Y(0), px - X(0));
+    if (len > 40) { x.textAlign = 'center'; x.fillText('|G|', (px + X(0)) / 2 - Math.sin(ang) * 12, (py + Y(0)) / 2 + Math.cos(ang) * 12 + 4); }
+  }
+
+  function margins() {
+    $('mpanel').style.display = showM ? 'block' : 'none';
+    Array.prototype.forEach.call(document.querySelectorAll('#bn .bn-mleg'), function (e) { e.style.display = showM ? 'flex' : 'none'; });
+    $('gmv').textContent = PC ? fmt(-PC.db, 2) + ' dB (' + fmt(1 / PC.m, 2) + '×)' : '∞ (never -180°)';
+    $('wpc').textContent = PC ? fmt(PC.w, 3) + ' rad/s' : 'none';
+    $('pmv').textContent = GC ? fmt(GC.ph * D + 180, 1) + '°' : '∞ (never 0 dB)';
+    $('wgc').textContent = GC ? fmt(GC.w, 3) + ' rad/s' : 'none';
+    var st = stable();
+    $('stab').textContent = st ? 'Stable' : 'Unstable';
+    $('stab').style.color = st ? '#0ca30c' : '#d03b3b';
+    $('jpc').style.display = PC ? '' : 'none';
+    $('jgc').style.display = GC ? '' : 'none';
+  }
+
+  function draw() {
+    var w = wOf(+$('w').value), cur = G(w), idx = 0;
+    while (idx < curve.length - 1 && curve[idx + 1].w <= w) idx++;
+    $('wout').textContent = fmt(w, w < 1 ? 3 : 2) + ' rad/s';
+    bode($('cm'), 'db', cur, 20, ' dB');
+    bode($('cp'), 'ph', cur, 45, '°');
+    nyq(cur, idx);
+    $('rdb').textContent = fmt(cur.db, 1) + ' dB';
+    $('rmag').textContent = fmt(cur.m, 3);
+    $('rph').textContent = fmt(cur.ph * D, 1) + '°';
+    $('rre').textContent = fmt(cur.re, 3);
+    $('rim').textContent = fmt(cur.im, 3);
+    margins();
+  }
+
+  $('sys').addEventListener('change', function (e) { sys = S[e.target.value]; build(); draw(); });
+  $('w').addEventListener('input', draw);
+  $('mg').addEventListener('click', function () { showM = !showM; $('mg').setAttribute('aria-pressed', String(showM)); draw(); });
+  $('zm').addEventListener('click', function () { zoom = !zoom; $('zm').setAttribute('aria-pressed', String(zoom)); draw(); });
+  $('jpc').addEventListener('click', function () { if (PC) { $('w').value = vOf(PC.w); draw(); } });
+  $('jgc').addEventListener('click', function () { if (GC) { $('w').value = vOf(GC.w); draw(); } });
+  $('play').addEventListener('click', function () {
+    if (anim) { cancelAnimationFrame(anim); anim = null; $('play').textContent = 'Sweep frequency'; return; }
+    var t0 = null;
+    $('play').textContent = 'Stop';
+    function step(t) {
+      if (!t0) t0 = t;
+      var v = Math.min(1000, (t - t0) / 6);
+      $('w').value = v; draw();
+      if (v < 1000) anim = requestAnimationFrame(step); else { anim = null; $('play').textContent = 'Sweep frequency'; }
+    }
+    anim = requestAnimationFrame(step);
+  });
+  window.addEventListener('resize', draw);
+  new MutationObserver(draw).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+
+  build();
+  draw();
+})();
+</script>
+<!-- bode-nyquist widget: script end -->

@@ -23,7 +23,7 @@
 * { box-sizing: border-box; }
 
 body {
-  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.55;
   color: var(--fg);
@@ -51,8 +51,7 @@ header {
 }
 
 .sitename {
-  font-size: 1.35rem;
-  font-weight: bold;
+  font-size: 1.5rem;
   color: var(--fg);
   text-decoration: none;
 }
@@ -125,6 +124,85 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   min-width: 6rem;
+}
+
+/* --- front page menu --- */
+
+/* Opening a heading fades the square in while it turns 0 -> 360deg, slides the
+   text right by the square's width plus a gap, and rolls its links down, all over
+   1s on the same S-curve. Closing runs the same in reverse. */
+.menu { --s-curve: cubic-bezier(0.65, 0, 0.35, 1); margin-top: 1rem; }
+
+.menu-head {
+  position: relative;
+  display: block;
+  font: inherit;
+  font-size: 2rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--link);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-sq {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0.32em;
+  height: 0.32em;
+  margin-top: -0.16em;
+  background: currentColor;
+  opacity: 0;
+  transform: rotate(0deg);
+  transition: opacity 1s var(--s-curve), transform 1s var(--s-curve);
+}
+
+/* headings 1.25x the line pitch apart: 1.2em line + 0.3em gap = 1.5em (48px) */
+.menu-group + .menu-group { margin-top: 0.6rem; }
+
+.menu-txt {
+  display: inline-block;
+  transition: transform 1s var(--s-curve);
+}
+
+.menu-group.open .menu-sq { opacity: 1; transform: rotate(360deg); }
+.menu-group.open .menu-txt { transform: translateX(0.7em); }
+
+/* The roll animates its grid row from 0fr to 1fr, so the list's height goes from
+   0 to its full height without a fixed max-height. Hidden links stay out of the
+   tab order until the roll is open. */
+.menu-roll {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 1s var(--s-curve), visibility 0s 1s;
+}
+.menu-group.open .menu-roll {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 1s var(--s-curve), visibility 0s;
+}
+
+.menu-sub {
+  overflow: hidden;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.4rem;
+  font-size: 1.05rem;
+}
+/* vertical spacing sits on the items, not the list, so a closed roll is 0px tall */
+.menu-sub li { margin: 0.1rem 0; }
+.menu-sub li:first-child { margin-top: 0.3rem; }
+.menu-sub li:last-child { margin-bottom: 0.3rem; }
+.menu-sub a { text-decoration: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-sq, .menu-txt, .menu-roll { transition: none; }
 }
 
 /* --- code --- */
