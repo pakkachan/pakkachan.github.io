@@ -89,7 +89,6 @@ footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--rule
   12.5% { background: color-mix(in srgb, var(--green) 35%, #fff); border-color: color-mix(in srgb, var(--green) 35%, #fff); }
 }
 .book.pulse { animation: pulse .75s ease-in-out 1; }
-@media (prefers-reduced-motion: reduce) { .book.pulse { animation: none; } }
 .book .bt { font-size: .72rem; }
 .book .lru { font-size: .6rem; letter-spacing: .04em; opacity: .75; }
 .set-idx { text-align: center; font-size: .7rem; color: var(--muted); margin-top: .2rem; line-height: 1.2; }
@@ -116,7 +115,6 @@ button.secondary:hover { border-color: var(--muted); }
 .last:empty { display: none; }
 .last { transition: opacity .5s; }
 .last.fade { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .last { transition: none; } }
 .badge { display: inline-block; font-size: .75rem; font-weight: bold; letter-spacing: .04em; border-radius: 1px; padding: .05rem .4rem; margin-right: .4rem; vertical-align: 1px; }
 .b-hit { background: var(--green); color: var(--on-green); }
 .b-miss { background: var(--miss-bg); color: var(--miss); }

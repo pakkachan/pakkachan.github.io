@@ -201,10 +201,6 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 .menu-sub li:last-child { margin-bottom: 0.3rem; }
 .menu-sub a { text-decoration: none; }
 
-@media (prefers-reduced-motion: reduce) {
-  .menu-sq, .menu-txt, .menu-roll { transition: none; }
-}
-
 /* --- code --- */
 
 code, pre, kbd, samp {
