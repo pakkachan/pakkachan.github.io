@@ -9,7 +9,7 @@ layout: default
   Each row is "YYYY-MM-DD|~|url|~|title".
 {% endcomment %}
 {%- capture rows -%}
-  {%- for post in site.posts -%}{{ post.date | date: "%Y-%m-%d" }}|~|{{ post.url }}|~|{{ post.title }}@@{%- endfor -%}
+  {%- for post in site.posts -%}{{ post.date | date: "%Y-%m-%d" }}|~|{{ post.url }}|~|{{ post.menu_title | default: post.title }}@@{%- endfor -%}
   {%- for item in site.data.interactive -%}{{ item.date | date: "%Y-%m-%d" }}|~|{{ item.url }}|~|{{ item.title }}@@{%- endfor -%}
 {%- endcapture -%}
 {%- assign rows = rows | split: "@@" | sort | reverse -%}

@@ -2,6 +2,8 @@
 
 *A note on AI: the reverse engineering, analysis and decisions are mine. I used AI to write/ check code and to help with visualisation scripts, not to solve the puzzle.*
 
+p.s this blog was featured on [the Jane Street blog](https://blog.janestreet.com/asic-puzzle-results/#dynamic-exploration). thanks for the merch jane street.
+
 ## Contents
 
 [Introduction](#introduction)

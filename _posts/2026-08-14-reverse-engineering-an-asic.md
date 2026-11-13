@@ -1,6 +1,7 @@
 ---
 layout: post
 title: "Solving Jane Street's \"Can you reverse engineer an ASIC\" puzzle"
+menu_title: "ASIC puzzle"
 permalink: /asic/
 excerpt: "Reverse engineering the Jane Street ASIC puzzle from the GDS up."
 ---
