@@ -36,6 +36,16 @@ layout: default
     </ul></div>
   </div>
 
+  {% comment %} Interactive pages. Not in _data/interactive.yml, so not listed under Blogs. {% endcomment %}
+  <div class="menu-group">
+    <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-vis">
+      <span class="menu-sq" aria-hidden="true"></span><span class="menu-txt">Interact</span>
+    </button>
+    <div class="menu-roll" id="menu-vis"><ul class="menu-sub">
+      <li><a href="{{ site.baseurl }}/datapath/">RV32I datapath</a></li>
+    </ul></div>
+  </div>
+
   {% comment %} No Art links yet. {% endcomment %}
   <div class="menu-group">
     <button class="menu-head" type="button" aria-expanded="false" aria-controls="menu-art">

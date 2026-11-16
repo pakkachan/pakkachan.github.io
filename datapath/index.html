@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RV32I datapath &middot; Aaron Shi</title>
+<style>
+  :root{
+    --bg:#fffffb; --fg:#1a1a1a; --or:#eb6834;
+    --ease:cubic-bezier(.22,1,.36,1);
+    --ease-s:cubic-bezier(.65,0,.35,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--fg)}
+  body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-weight:400;font-synthesis:none;-webkit-font-smoothing:antialiased}
+  b,strong,h1{font-weight:inherit}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-transform:inherit;letter-spacing:inherit}
+
+  .bar{display:flex;justify-content:space-between;align-items:baseline;padding:18px 8px 14px;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  .bar h1{font-size:clamp(64px,12vw,184px);font-weight:300;letter-spacing:0;line-height:.8;text-transform:none}
+  .toggles{display:flex;gap:22px;flex-wrap:wrap;justify-content:flex-end}
+  .toggle{display:flex;align-items:center;gap:10px}
+  .sw{width:30px;height:16px;border-radius:8px;border:1px solid var(--fg);position:relative;transition:background .45s var(--ease),border-color .45s var(--ease)}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:var(--fg);transition:transform .55s var(--ease),background .45s var(--ease)}
+  .toggle[aria-pressed=true] .sw{background:var(--or);border-color:var(--or)}
+  .toggle[aria-pressed=true] .sw::after{transform:translateX(14px);background:var(--bg)}
+
+  .wrap{padding:0 8px 8px}
+  .panel{position:relative;height:calc((100vh - 8px) * .67);min-height:440px;overflow:hidden;background:var(--bg);outline:1px solid rgba(26,26,26,.08)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y pinch-zoom}
+
+  .lab{position:absolute;font-size:11px;letter-spacing:.08em}
+  .tl{top:14px;left:16px;line-height:1.6;font-variant-numeric:tabular-nums;pointer-events:none}
+  .now{position:absolute;left:14px;bottom:14px;pointer-events:none;max-width:60%}
+  .meta{font-size:11px;letter-spacing:.08em;margin:0 0 10px 2px;font-variant-numeric:tabular-nums;opacity:.7;white-space:nowrap}
+  .meta span{margin-right:18px}
+  .ins{font-size:clamp(30px,3.6vw,56px);font-weight:300;line-height:.9;white-space:nowrap}
+  .spd{position:absolute;top:14px;right:16px;display:flex;align-items:center;gap:14px;font-size:11px;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+  .sl{position:relative;width:150px;height:30px;cursor:pointer;touch-action:none}
+  .sl .track{position:absolute;left:0;right:0;top:14px;height:1px;background:var(--fg);opacity:.35}
+  .sl .fill{position:absolute;left:0;top:13px;height:3px;background:var(--or);width:0}
+  .sl .knob{position:absolute;top:8px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--or);outline:none;transition:transform .5s var(--ease)}
+  .sl .knob:hover,.sl .knob:focus-visible,.sl.active .knob{transform:scale(1.35)}
+  .br{bottom:24px;right:16px;display:flex;gap:18px;align-items:center;text-transform:uppercase;flex-wrap:wrap;justify-content:flex-end}
+  .br button{transition:color .4s var(--ease),opacity .4s var(--ease)}
+  @media (hover:hover){.br button:hover{color:var(--or)}}
+  .br button.go{color:var(--or)}
+  @media (hover:hover){.br button.go:hover{color:var(--fg)}}
+  .br button:disabled{opacity:.3;cursor:default}
+
+  /* editorial notes under the panel */
+  .notes{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:40px;padding:36px 24px 80px;font-size:13px;line-height:1.45}
+  .notes .big{font-size:clamp(24px,2.4vw,34px);font-weight:300;line-height:1.1;margin:0 0 26px;max-width:360px}
+  .phead{display:flex;justify-content:space-between;align-items:baseline;max-width:440px;margin:0 0 12px;gap:16px;flex-wrap:wrap}
+  .phead .k{margin:0}
+  .picks{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+  .pk{display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;transition:opacity .4s var(--ease)}
+  .pk .sq{width:9px;height:9px;background:var(--fg);transition:background .4s var(--ease)}
+  .pk[aria-pressed=true]{opacity:1}
+  .pk[aria-pressed=true] .sq{background:var(--or)}
+  @media (hover:hover){.pk:hover{opacity:1}}
+  .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin:0 0 12px}
+  .ed{position:relative;background:rgba(26,26,26,.045);max-width:440px}
+  .ed textarea,.edbg{font:14px/1.7 "Helvetica Neue",Helvetica,Arial,sans-serif;padding:14px 16px 14px 30px;white-space:pre;tab-size:2;letter-spacing:.01em}
+  .ed textarea{display:block;width:100%;min-height:220px;border:0;outline:0;resize:none;background:transparent;color:var(--fg);overflow:hidden;position:relative}
+  .edbg{position:absolute;inset:0;color:transparent;pointer-events:none;overflow:hidden}
+  .edbg div{position:relative;min-height:1.7em}
+  .edbg div.cur::before{content:"";position:absolute;left:-18px;top:.55em;width:8px;height:8px;background:var(--or)}
+  .err{color:var(--or);margin:10px 0 0;min-height:1.4em;font-size:12px}
+  .regs{display:grid;grid-template-columns:1fr 1fr;column-gap:28px;font-variant-numeric:tabular-nums;font-size:12px}
+  .regs div{display:grid;grid-template-columns:28px 34px 1fr;gap:6px;padding:2px 0;transition:color .5s var(--ease)}
+  .regs .a{opacity:.45}
+  .regs .v{text-align:right}
+  .regs div.z{opacity:.35}
+  .regs div.hot{color:var(--or);opacity:1}
+  .mem{font-variant-numeric:tabular-nums;font-size:12px;margin:0 0 30px}
+  .mem div{display:grid;grid-template-columns:70px 1fr;padding:2px 0}
+  .mem div.hot{color:var(--or)}
+  .sup p{margin:0 0 6px;font-size:12px}
+  .sup p span{opacity:.5;margin-right:8px}
+  @media (max-width:900px){.notes{grid-template-columns:1fr;gap:30px}.now{max-width:100%}}
+  .bare .bar,.bare .notes{display:none}
+  .bare .wrap{padding:0}
+  .bare .panel{height:100vh;outline:0;min-height:0}
+  /* --- site header at the normal page width; the visualisation below it with side margins
+     half those of a normal page ---
+     A normal page body is 42rem wide with 1rem padding each side, centred, so its content is
+     40rem wide and each side margin is (100% - 42rem) / 2. Halving that margin gives a body of
+     100% - (100% - 42rem) / 2 = 50% + 21rem, so content of 50% + 21rem - 2rem = 50% + 19rem. */
+  body{padding:2rem 0}
+  .site-head,.bar,.wrap,.notes{width:calc(100% - 2rem);margin-left:auto;margin-right:auto}
+  .site-head,.site-desc{max-width:40rem}
+  .site-desc{width:calc(100% - 2rem);margin:0 auto;font-size:16px;line-height:1.55}
+  .bar,.wrap,.notes{max-width:calc(50% + 19rem)}
+  .site-head{border-bottom:1px solid #ddd;padding-bottom:.75rem;margin-bottom:1.5rem;display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:baseline;justify-content:space-between;font-size:16px;line-height:1.55}
+  .site-head a{color:#0b4ea2}
+  .site-head a:hover{text-decoration:none}
+  .site-head .sitename{font-size:1.5rem;color:#1a1a1a;text-decoration:none}
+  .site-head nav{display:flex;align-items:baseline;gap:1rem}
+  .site-head nav a{font-size:.95rem}
+  .site-head .theme-toggle{font-family:system-ui,sans-serif;font-size:1rem;line-height:1;color:#1a1a1a}   /* undo the button font reset above, as on the other pages */
+  .site-head .theme-toggle:hover{color:#0b4ea2}
+  @media (max-width:480px){body{padding-top:1.75rem}.site-head,.site-desc{font-size:17px}}
+  /* --- light titles: Macs use Helvetica Neue Light; machines without it (Linux, Windows) get
+     Geist Light from fonts/ (SIL Open Font License, fonts/OFL.txt) instead of a regular-weight
+     stand-in. Only the "Datapath" title, the instruction line and the notes heading use it. */
+  @font-face{font-family:"Geist";font-style:normal;font-weight:300;font-display:swap;src:url(/datapath/fonts/geist-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  .bar h1,.ins,.notes .big{font-family:"Helvetica Neue","Geist",Helvetica,Arial,sans-serif}
+  body.bare{padding:0}
+  body.bare .wrap{width:auto;max-width:none;margin:0}
+  .bare .site-head,.bare .site-desc{display:none}
+</style>
+</head>
+<body class="guides-on values-on">
+<header class="site-head">
+  <a class="sitename" href="/">Aaron Shi</a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about/">About</a>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark mode"></button>
+  </nav>
+</header>
+<p class="site-desc">An interactive single cycle rv32i datapath. comb read, clocked write memories and register file. click and drag the circles and lines around for fun :) , and toggle the move slider to reshape the datapath and wires.</p>
+<header class="bar">
+  <h1>Datapath</h1>
+  <div class="toggles">
+    <button class="toggle" data-cls="values-on" data-key="dp-values"><span>Values</span><span class="sw"></span></button>
+    <button class="toggle" data-cls="guides-on" data-key="guides-v1"><span>Guides</span><span class="sw"></span></button>
+  </div>
+</header>
+<div class="wrap">
+  <section class="panel">
+    <canvas></canvas>
+    <div class="spd"><span id="slab">speed 1.0×</span><div class="sl" id="spd"><div class="track"></div><div class="fill" id="sfill"></div><div class="knob" id="sknob" tabindex="0" role="slider" aria-label="pulse speed"></div></div></div>
+    <div class="lab tl"><div id="cyc">cycle 0</div><div id="stat">ready</div></div>
+    <div class="now"><div class="meta" id="meta"><span>pc 0x0</span></div><div class="ins" id="ins">ready</div></div>
+    <div class="lab br"><button data-act="step">Step</button><button data-act="run">Run</button><button data-act="reset">Reset program</button><button data-act="layout">Restore layout</button><button class="toggle wtog" data-act="move" aria-pressed="false"><span>Move</span><span class="sw"></span></button></div>
+  </section>
+</div>
+<section class="notes">
+  <div>
+    <p class="big">rv32i (single cycle)</p>
+    <div class="phead"><div class="k">Program</div><div class="picks" id="picks"><button class="pk" data-prog="custom" aria-pressed="true"><span class="sq"></span>Custom</button><button class="pk" data-prog="fib" aria-pressed="false"><span class="sq"></span>Fibonacci</button><button class="pk" data-prog="series" aria-pressed="false"><span class="sq"></span>Series</button><button class="pk" data-prog="arith" aria-pressed="false"><span class="sq"></span>Arithmetic</button></div></div>
+    <div class="ed"><div class="edbg" id="edbg"></div><textarea id="src" spellcheck="false" wrap="off" aria-label="program"></textarea></div>
+    <div class="err" id="err"></div>
+  </div>
+  <div>
+    <div class="phead"><div class="k">Registers</div><div class="picks" id="rfmt"><button class="pk" data-fmt="hex" aria-pressed="false"><span class="sq"></span>Hex</button><button class="pk" data-fmt="signed" aria-pressed="true"><span class="sq"></span>Signed</button></div></div>
+    <div class="regs" id="regs"></div>
+  </div>
+  <div>
+    <div class="k">Data memory</div>
+    <div class="mem" id="mem"></div>
+    <div class="k">Supported</div>
+    <div class="sup">
+      <p><span>R</span>add sub sll slt sltu xor srl sra or and</p>
+      <p><span>M</span>mul mulh div divu rem remu</p>
+      <p><span>I</span>addi slti sltiu xori ori andi slli srli srai</p>
+      <p><span>Load</span>lb lh lw lbu lhu</p>
+      <p><span>Store</span>sb sh sw</p>
+      <p><span>Branch</span>beq bne blt bge bltu bgeu</p>
+      <p><span>Jump</span>jal jalr</p>
+      <p><span>Upper</span>lui auipc</p>
+      <p><span>Pseudo</span>li mv not neg nop j jr ret ble bgt bleu bgtu beqz bnez blez bgez bltz bgtz</p>
+      <p><span>Stop</span>ecall ebreak</p>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+const OR = '#eb6834', INK = '#1a1a1a', PAPER = '#fffffb', TINT = '#e6e5e0';
+const FONT = '"Helvetica Neue",Helvetica,Arial,sans-serif';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const approach = (cur, tgt, rate, dt) => cur + (tgt - cur) * (1 - Math.exp(-rate * dt));
+const outExpo = t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t);
+const inOutCubic = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function mixColor(t) { const a = [26, 26, 26], b = [235, 104, 52]; return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`; }
+const hex = v => '0x' + (v >>> 0).toString(16);
+const hex8 = v => '0x' + (v >>> 0).toString(16).padStart(8, '0');
+const dec = v => String(v | 0);
+
+/* =========================================================
+   Assembler (RV32I subset + common pseudo-instructions)
+   ========================================================= */
+const ABI = ['zero','ra','sp','gp','tp','t0','t1','t2','s0','s1','a0','a1','a2','a3','a4','a5','a6','a7','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','t3','t4','t5','t6'];
+function reg(t) {
+  if (t === undefined) throw 'missing register';
+  const s = t.toLowerCase();
+  if (/^x([0-9]|[12][0-9]|3[01])$/.test(s)) return +s.slice(1);
+  if (s === 'fp') return 8;
+  const i = ABI.indexOf(s); if (i < 0) throw `"${t}" is not a register`; return i;
+}
+const isReg = t => { try { reg(t); return true; } catch (_) { return false; } };
+function num(t) {
+  if (t === undefined) throw 'missing number';
+  let s = t.toLowerCase(), neg = false;
+  if (s[0] === '-') { neg = true; s = s.slice(1); } else if (s[0] === '+') s = s.slice(1);
+  let v;
+  if (/^0x[0-9a-f]+$/.test(s)) v = parseInt(s.slice(2), 16);
+  else if (/^0b[01]+$/.test(s)) v = parseInt(s.slice(2), 2);
+  else if (/^\d+$/.test(s)) v = parseInt(s, 10);
+  else throw `"${t}" is not a number`;
+  return neg ? -v : v;
+}
+const R = { add: [0, 0], sub: [0, 32], sll: [1, 0], slt: [2, 0], sltu: [3, 0], xor: [4, 0], srl: [5, 0], sra: [5, 32], or: [6, 0], and: [7, 0],
+  mul: [0, 1], mulh: [1, 1], div: [4, 1], divu: [5, 1], rem: [6, 1], remu: [7, 1] };   // M extension
+const IA = { addi: 0, slti: 2, sltiu: 3, xori: 4, ori: 6, andi: 7 };
+const SH = { slli: [1, 0], srli: [5, 0], srai: [5, 32] };
+const LD = { lb: 0, lh: 1, lw: 2, lbu: 4, lhu: 5 };
+const ST = { sb: 0, sh: 1, sw: 2 };
+const BR = { beq: 0, bne: 1, blt: 4, bge: 5, bltu: 6, bgeu: 7 };
+const SWAP = { bgt: 'blt', ble: 'bge', bgtu: 'bltu', bleu: 'bgeu' };
+const ZB = { beqz: ['beq', 0], bnez: ['bne', 0], bltz: ['blt', 0], bgez: ['bge', 0], blez: ['bge', 1], bgtz: ['blt', 1] };
+
+function expand(mn, o) {      // pseudo-instructions -> base instructions
+  switch (mn) {
+    case 'nop': return [['addi', ['x0', 'x0', '0']]];
+    case 'mv': return [['addi', [o[0], o[1], '0']]];
+    case 'not': return [['xori', [o[0], o[1], '-1']]];
+    case 'neg': return [['sub', [o[0], 'x0', o[1]]]];
+    case 'li': {
+      const v = num(o[1]) | 0;
+      if (v >= -2048 && v <= 2047) return [['addi', [o[0], 'x0', String(v)]]];
+      const hi = ((v + 0x800) >>> 12) & 0xfffff, lo = (v - (hi << 12)) | 0;
+      return [['lui', [o[0], String(hi)]], ['addi', [o[0], o[0], String(lo)]]];
+    }
+    case 'j': return [['jal', ['x0', o[0]]]];
+    case 'jr': return [['jalr', ['x0', o[0], '0']]];
+    case 'ret': return [['jalr', ['x0', 'ra', '0']]];
+    case 'jal': return o.length === 1 ? [['jal', ['ra', o[0]]]] : [['jal', o]];
+    case 'jalr': return o.length === 1 ? [['jalr', ['ra', o[0], '0']]] : [['jalr', o]];
+  }
+  if (SWAP[mn]) return [[SWAP[mn], [o[1], o[0], o[2]]]];
+  if (ZB[mn]) { const [b, sw] = ZB[mn]; return [[b, sw ? ['x0', o[0], o[1]] : [o[0], 'x0', o[1]]]]; }
+  return [[mn, o]];
+}
+function assemble(text) {
+  const lines = text.split('\n'), items = [], labels = {};
+  lines.forEach((raw, ln) => {
+    let s = raw.replace(/(#|\/\/|;).*$/, '').trim();
+    let m;
+    while ((m = s.match(/^([A-Za-z_.][\w.]*)\s*:/))) {
+      if (labels[m[1]] !== undefined) throw { line: ln, msg: `label "${m[1]}" defined twice` };
+      labels[m[1]] = items.length * 4; s = s.slice(m[0].length).trim();
+    }
+    if (!s || s[0] === '.') return;                     // ignore directives like .text / .globl
+    const tok = s.replace(/[(),]/g, ' ').trim().split(/\s+/), mn = tok[0].toLowerCase(), ops = tok.slice(1);
+    let ex; try { ex = expand(mn, ops); } catch (e) { throw { line: ln, msg: e }; }
+    ex.forEach(([m2, o2]) => items.push({ mn: m2, ops: o2, line: ln, text: s.replace(/\s+/g, ' ') }));
+  });
+  const prog = items.map((it, k) => {
+    const pc = k * 4, o = it.ops, mn = it.mn;
+    const target = t => { if (t === undefined) throw 'missing target'; return labels[t] !== undefined ? labels[t] - pc : num(t); };
+    const rng = (v, lo, hi, what) => { if (v < lo || v > hi) throw `${what} ${v} out of range`; return v; };
+    try {
+      const I = { mn, line: it.line, text: it.text, pc, rd: 0, rs1: 0, rs2: 0, imm: 0 };
+      if (R[mn]) Object.assign(I, { kind: 'R', fmt: 'R', op: 0x33, f3: R[mn][0], f7: R[mn][1], rd: reg(o[0]), rs1: reg(o[1]), rs2: reg(o[2]) });
+      else if (IA[mn] !== undefined) Object.assign(I, { kind: 'IA', fmt: 'I', op: 0x13, f3: IA[mn], rd: reg(o[0]), rs1: reg(o[1]), imm: rng(num(o[2]), -2048, 2047, 'immediate') });
+      else if (SH[mn]) { const sh = rng(num(o[2]), 0, 31, 'shift'); Object.assign(I, { kind: 'IA', fmt: 'I', op: 0x13, f3: SH[mn][0], f7: SH[mn][1], rd: reg(o[0]), rs1: reg(o[1]), imm: sh, enc: sh | (SH[mn][1] << 5) }); }
+      else if (LD[mn] !== undefined) { const two = o.length === 2; Object.assign(I, { kind: 'LD', fmt: 'I', op: 0x03, f3: LD[mn], rd: reg(o[0]), imm: two ? 0 : rng(num(o[1]), -2048, 2047, 'offset'), rs1: reg(two ? o[1] : o[2]) }); }
+      else if (ST[mn] !== undefined) { const two = o.length === 2; Object.assign(I, { kind: 'ST', fmt: 'S', op: 0x23, f3: ST[mn], rs2: reg(o[0]), imm: two ? 0 : rng(num(o[1]), -2048, 2047, 'offset'), rs1: reg(two ? o[1] : o[2]) }); }
+      else if (BR[mn] !== undefined) { const off = rng(target(o[2]), -4096, 4094, 'branch offset'); Object.assign(I, { kind: 'BR', fmt: 'B', op: 0x63, f3: BR[mn], rs1: reg(o[0]), rs2: reg(o[1]), imm: off }); }
+      else if (mn === 'jal') Object.assign(I, { kind: 'JAL', fmt: 'J', op: 0x6f, rd: reg(o[0]), imm: rng(target(o[1]), -1048576, 1048574, 'jump offset') });
+      else if (mn === 'jalr') {
+        const alt = isReg(o[1]);          // jalr rd, rs1, imm   or   jalr rd, imm(rs1)
+        Object.assign(I, { kind: 'JALR', fmt: 'I', op: 0x67, f3: 0, rd: reg(o[0]), rs1: reg(alt ? o[1] : o[2]), imm: rng(num(alt ? (o[2] ?? '0') : o[1]), -2048, 2047, 'offset') });
+      }
+      else if (mn === 'lui' || mn === 'auipc') Object.assign(I, { kind: mn === 'lui' ? 'LUI' : 'AUIPC', fmt: 'U', op: mn === 'lui' ? 0x37 : 0x17, rd: reg(o[0]), imm: rng(num(o[1]), -524288, 1048575, 'upper immediate') & 0xfffff });
+      else if (mn === 'ecall' || mn === 'ebreak') Object.assign(I, { kind: 'SYS', fmt: 'I', op: 0x73, f3: 0, imm: mn === 'ebreak' ? 1 : 0 });
+      else throw `unknown instruction "${mn}"`;
+      I.word = encode(I);
+      return I;
+    } catch (e) { throw { line: it.line, msg: typeof e === 'string' ? e : String(e) }; }
+  });
+  return prog;
+}
+function encode(i) {
+  const m = i.imm | 0;
+  switch (i.fmt) {
+    case 'R': return (i.f7 << 25 | i.rs2 << 20 | i.rs1 << 15 | i.f3 << 12 | i.rd << 7 | i.op) >>> 0;
+    case 'I': return (((i.enc ?? m) & 0xfff) << 20 | i.rs1 << 15 | i.f3 << 12 | i.rd << 7 | i.op) >>> 0;
+    case 'S': return (((m >> 5) & 0x7f) << 25 | i.rs2 << 20 | i.rs1 << 15 | i.f3 << 12 | (m & 0x1f) << 7 | i.op) >>> 0;
+    case 'B': return (((m >> 12) & 1) << 31 | ((m >> 5) & 0x3f) << 25 | i.rs2 << 20 | i.rs1 << 15 | i.f3 << 12 | ((m >> 1) & 0xf) << 8 | ((m >> 11) & 1) << 7 | i.op) >>> 0;
+    case 'U': return ((m & 0xfffff) << 12 | i.rd << 7 | i.op) >>> 0;
+    case 'J': return (((m >> 20) & 1) << 31 | ((m >> 1) & 0x3ff) << 21 | ((m >> 11) & 1) << 20 | ((m >> 12) & 0xff) << 12 | i.rd << 7 | i.op) >>> 0;
+  }
+}
+
+/* =========================================================
+   Single-cycle machine
+   ========================================================= */
+const MEMSZ = 1024;
+let prog = [], regs = new Int32Array(32), mem = new Uint8Array(MEMSZ), dv = new DataView(mem.buffer);
+let pc = 0, cycle = 0, halted = false, rec = null, lastReg = -1, lastMem = -1;
+const ALU = {
+  add: (a, b) => (a + b) | 0, sub: (a, b) => (a - b) | 0, sll: (a, b) => a << (b & 31),
+  slt: (a, b) => (a | 0) < (b | 0) ? 1 : 0, sltu: (a, b) => (a >>> 0) < (b >>> 0) ? 1 : 0,
+  xor: (a, b) => a ^ b, srl: (a, b) => (a >>> (b & 31)) | 0, sra: (a, b) => a >> (b & 31), or: (a, b) => a | b, and: (a, b) => a & b,
+  mul: (a, b) => Math.imul(a, b), mulh: (a, b) => Number((BigInt(a | 0) * BigInt(b | 0)) >> 32n) | 0,
+  div: (a, b) => b === 0 ? -1 : (a === -2147483648 && b === -1) ? a : (a / b) | 0,
+  divu: (a, b) => (b >>> 0) === 0 ? -1 : (((a >>> 0) / (b >>> 0)) >>> 0) | 0,
+  rem: (a, b) => b === 0 ? a : (a === -2147483648 && b === -1) ? 0 : (a % b) | 0,
+  remu: (a, b) => (b >>> 0) === 0 ? a : (((a >>> 0) % (b >>> 0)) >>> 0) | 0,
+};
+const IOP = { addi: 'add', slti: 'slt', sltiu: 'sltu', xori: 'xor', ori: 'or', andi: 'and', slli: 'sll', srli: 'srl', srai: 'sra' };
+const CMP = { beq: (a, b) => a === b, bne: (a, b) => a !== b, blt: (a, b) => (a | 0) < (b | 0), bge: (a, b) => (a | 0) >= (b | 0), bltu: (a, b) => (a >>> 0) < (b >>> 0), bgeu: (a, b) => (a >>> 0) >= (b >>> 0) };
+
+function step() {
+  if (halted) return null;
+  const i = prog[pc >> 2];
+  if (!i || pc % 4 || pc < 0) { halted = true; return null; }
+  const r1 = regs[i.rs1] | 0, r2 = regs[i.rs2] | 0, pc4 = (pc + 4) | 0;
+  const a = new Set(['pc_imem', 'pc_add4', 'imem_ctrl', 'pcmux_pc']), v = {};
+  const S = { asrc: 0, wb: 0, pcsel: 0, base: 0 };
+  let next = pc4, wbVal = null, alu = null, taken = false, memInfo = null, aluName = '';
+  const on = (...ids) => ids.forEach(x => a.add(x));
+  v.pc_imem = hex(pc); v.pc_add4 = hex(pc); v.imem_ctrl = 'op ' + hex(i.op);
+  v.imem_rs1 = 'x' + i.rs1; v.imem_rs2 = 'x' + i.rs2; v.imem_rd = 'x' + i.rd; v.imem_imm = hex8(i.word); v.imem_actl = 'f3 ' + (i.f3 ?? 0);
+  v.rd1_alu = v.rd1_base = dec(r1); v.rd2_asrc = v.rd2_dmem = dec(r2);
+  v.imm_asrc = v.imm_badd = dec(i.kind === 'LUI' || i.kind === 'AUIPC' ? i.imm << 12 : i.imm);
+  v.add4_pcmux = v.add4_wb = hex(pc4); v.pc_base = hex(pc);
+  switch (i.kind) {
+    case 'R': aluName = i.mn; alu = ALU[i.mn](r1, r2); wbVal = alu;
+      on('imem_rs1', 'imem_rs2', 'imem_rd', 'imem_actl', 'rd1_alu', 'rd2_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    case 'IA': aluName = IOP[i.mn]; alu = ALU[aluName](r1, i.imm); wbVal = alu; S.asrc = 1;
+      on('imem_rs1', 'imem_rd', 'imem_imm', 'imem_actl', 'rd1_alu', 'imm_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    case 'LD': {
+      aluName = 'add'; alu = (r1 + i.imm) | 0; S.asrc = 1; S.wb = 1;
+      const sz = [1, 2, 4, 0, 1, 2][i.f3];
+      if (alu < 0 || alu + sz > MEMSZ) throw `load address ${hex(alu)} outside data memory`;
+      wbVal = i.mn === 'lb' ? dv.getInt8(alu) : i.mn === 'lbu' ? dv.getUint8(alu) : i.mn === 'lh' ? dv.getInt16(alu, true) : i.mn === 'lhu' ? dv.getUint16(alu, true) : dv.getInt32(alu, true);
+      memInfo = { addr: alu, read: true }; v.dmem_wb = dec(wbVal);
+      on('imem_rs1', 'imem_rd', 'imem_imm', 'rd1_alu', 'imm_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_dmem', 'c_mem', 'dmem_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    }
+    case 'ST': {
+      aluName = 'add'; alu = (r1 + i.imm) | 0; S.asrc = 1;
+      const sz = [1, 2, 4][i.f3];
+      if (alu < 0 || alu + sz > MEMSZ) throw `store address ${hex(alu)} outside data memory`;
+      if (sz === 1) dv.setInt8(alu, r2); else if (sz === 2) dv.setInt16(alu, r2, true); else dv.setInt32(alu, r2, true);
+      memInfo = { addr: alu, write: true };
+      on('imem_rs1', 'imem_rs2', 'imem_imm', 'rd1_alu', 'imm_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_dmem', 'rd2_dmem', 'c_mem'); break;
+    }
+    case 'BR': {
+      aluName = 'sub'; alu = (r1 - r2) | 0; taken = CMP[i.mn](r1, r2);
+      const tgt = (pc + i.imm) | 0; v.base_badd = hex(pc); v.badd_pcmux = hex(tgt); v.alu_bctl = taken ? 'taken' : 'not taken';
+      on('imem_rs1', 'imem_rs2', 'imem_imm', 'imem_actl', 'rd1_alu', 'rd2_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_bctl', 'c_br', 'imm_badd', 'pc_base', 'base_badd', 'c_base');
+      if (taken) { next = tgt; S.pcsel = 1; on('badd_pcmux', 'c_pcsel'); } else on('add4_pcmux'); break;
+    }
+    case 'JAL': {
+      const tgt = (pc + i.imm) | 0; next = tgt; wbVal = pc4; S.pcsel = 1; S.wb = 2;
+      v.base_badd = hex(pc); v.badd_pcmux = hex(tgt);
+      on('imem_rd', 'imem_imm', 'imm_badd', 'pc_base', 'base_badd', 'c_base', 'badd_pcmux', 'c_br', 'c_pcsel', 'add4_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    }
+    case 'JALR': {
+      const tgt = ((r1 + i.imm) & ~1) | 0; next = tgt; wbVal = pc4; S.pcsel = 1; S.wb = 2; S.base = 1;
+      v.base_badd = hex(r1); v.badd_pcmux = hex(tgt);
+      on('imem_rs1', 'imem_rd', 'imem_imm', 'rd1_base', 'imm_badd', 'base_badd', 'c_base', 'badd_pcmux', 'c_br', 'c_pcsel', 'add4_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    }
+    case 'LUI': aluName = 'pass'; alu = i.imm << 12; wbVal = alu; S.asrc = 1;
+      on('imem_rd', 'imem_imm', 'imm_asrc', 'asrc_alu', 'c_asrc', 'c_aluop', 'c_actl', 'alu_wb', 'wb_regs', 'c_wb', 'c_regw'); break;
+    case 'AUIPC': { const val = (pc + (i.imm << 12)) | 0; wbVal = val; S.wb = 3; v.base_badd = hex(pc); v.badd_wb = hex(val);
+      on('imem_rd', 'imem_imm', 'imm_badd', 'pc_base', 'base_badd', 'c_base', 'badd_wb', 'wb_regs', 'c_wb', 'c_regw'); break; }
+    case 'SYS': halted = true; next = pc; a.delete('pcmux_pc'); break;
+  }
+  if (i.kind !== 'BR' && i.kind !== 'JAL' && i.kind !== 'JALR' && i.kind !== 'SYS') on('add4_pcmux');
+  if (alu !== null) { v.asrc_alu = dec(S.asrc ? (i.kind === 'LUI' ? i.imm << 12 : i.imm) : r2); v.alu_wb = dec(alu); v.alu_dmem = hex(alu); }
+  if (wbVal !== null) { v.wb_regs = dec(wbVal); if (i.rd) regs[i.rd] = wbVal | 0; }
+  v.pcmux_pc = hex(next);
+  const r = { i, pc, next, active: a, vals: v, sel: S, aluName, taken, wbReg: wbVal !== null ? i.rd : -1, mem: memInfo, alu };
+  pc = next; cycle++;
+  if (!halted && !prog[pc >> 2]) halted = true;     // ran off the end (e.g. an empty "end:" label)
+  return r;
+}
+
+/* =========================================================
+   Graph: hubs, rings, spine, an ALU molecule (design space)
+   ========================================================= */
+const N = [], SPR = [], EDGES = [];
+function node(o) { const n = Object.assign({ x: 0, y: 0, vx: 0, vy: 0, k0: -9, kA: 0, kFrom: 0, hov: 0, born: 0, sub: false, pres: 1, ph: Math.random() * 6.28, ph2: Math.random() * 6.28 }, o); n.i = N.length; n.m = 1 + n.r * n.r / 140; N.push(n); return n; }
+// default layout: main line y 300, second entries beneath at y 500
+const HUB = {
+  pc:   node({ id: 'pc',   hx: 120,  hy: 300, r: 16, kind: 'target', label: 'pc' }),
+  npc:  node({ id: 'npc',  hx: 120,  hy: 500, r: 12, kind: 'pill', n: 2, label: 'next pc', flip: true }),
+  imem: node({ id: 'imem', hx: 330,  hy: 300, r: 22, kind: 'stripe', label: 'instruction memory' }),
+  add4: node({ id: 'add4', hx: 330,  hy: 500, r: 9,  kind: 'orange', label: 'pc + 4' }),
+  ctrl: node({ id: 'ctrl', hx: 500,  hy: 120, r: 26, kind: 'ctrl',   label: 'control' }),
+  regs: node({ id: 'regs', hx: 570,  hy: 300, r: 20, kind: 'ink',    label: 'registers' }),
+  imm:  node({ id: 'imm',  hx: 570,  hy: 500, r: 13, kind: 'half',   label: 'imm gen' }),
+  asrc: node({ id: 'asrc', hx: 760,  hy: 300, r: 12, kind: 'pill', n: 2, label: 'alu src' }),
+  tgt:  node({ id: 'tgt',  hx: 962,  hy: 500, r: 10, kind: 'ring',   label: 'branch target' }),
+  aluA: node({ id: 'aluA', hx: 905.5, hy: 259.4, r: 18, kind: 'atom', letter: 'A', rigid: [-56.5, -40.6] }),
+  aluB: node({ id: 'aluB', hx: 905.5, hy: 340.6, r: 18, kind: 'atom', letter: 'B', rigid: [-56.5, 40.6] }),
+  alu:  node({ id: 'alu',  hx: 962,  hy: 300, r: 24, kind: 'alu',    label: 'alu' }),
+  dmem: node({ id: 'dmem', hx: 1170, hy: 300, r: 18, kind: 'ring',   label: 'data memory' }),
+  wb:   node({ id: 'wb',   hx: 1350, hy: 300, r: 12, kind: 'pill', n: 2, label: 'write back' }),
+};
+const EMAP = new Map();
+function link(a, b, k, show, o = {}) {
+  SPR.push({ a, b, k });
+  if (!show) return;
+  const e = { a, b, main: show === 'main', bond: show === 'bond', bx: o.bend ? o.bend[0] : 0, by: o.bend ? o.bend[1] : 0, ap: o.ap ?? null, bp: o.bp ?? null, bDir: o.bDir || null, exp: !!o.exp, st: {}, hold: null };
+  EDGES.push(e); EMAP.set(a.id + '>' + b.id, e); EMAP.set(b.id + '>' + a.id, e);
+}
+// mux inputs land on the mux's dots (bp = input index); outputs leave from its centre
+[['pc', 'imem'], ['pc', 'add4'], ['imem', 'regs'], ['imem', 'ctrl', { exp: true }], ['imem', 'imm'],
+ ['regs', 'asrc', { bp: 0 }], ['imm', 'asrc', { bp: 1 }], ['asrc', 'aluB'], ['regs', 'aluA', { bend: [0, -110] }],
+ ['alu', 'tgt'],
+ ['alu', 'dmem'], ['regs', 'dmem', { bend: [0, 260] }],
+ ['alu', 'wb', { bend: [0, -200], bp: 0 }], ['dmem', 'wb', { bp: 1 }], ['wb', 'regs', { bend: [0, -400] }],
+ ['add4', 'npc', { bp: 0 }], ['tgt', 'npc', { bend: [0, 220], bp: 1 }], ['npc', 'pc', { bDir: [-1, 0] }]]
+  .forEach(([a, b, o]) => link(HUB[a], HUB[b], 34, 'main', o));
+link(HUB.aluA, HUB.alu, 0, 'bond'); link(HUB.aluB, HUB.alu, 0, 'bond');   // one module: bonds never stretch
+// register file: a ring of 32 around its hub
+const REG = [];
+for (let i = 0; i < 32; i++) {
+  const a = -Math.PI / 2 + i / 32 * Math.PI * 2;
+  REG.push(node({ id: 'x' + i, hx: HUB.regs.hx + Math.cos(a) * 92, hy: HUB.regs.hy + Math.sin(a) * 92, r: 3, kind: 'reg', sub: true, idx: i }));
+  link(HUB.regs, REG[i], 55, 'sub');
+}
+for (let i = 0; i < 32; i++) link(REG[i], REG[(i + 1) % 32], 30);
+// data memory: a ring of 16 words
+const WORD = [];
+for (let i = 0; i < 16; i++) {
+  const a = -Math.PI / 2 + i / 16 * Math.PI * 2;
+  WORD.push(node({ id: 'w' + i, hx: HUB.dmem.hx + Math.cos(a) * 70, hy: HUB.dmem.hy + Math.sin(a) * 70, r: 3, kind: 'word', sub: true, idx: i }));
+  link(HUB.dmem, WORD[i], 55, 'sub');
+}
+for (let i = 0; i < 16; i++) link(WORD[i], WORD[(i + 1) % 16], 30);
+// instruction memory: a spine of up to 16 slots rising above it
+const SLOT = [];
+for (let i = 0; i < 16; i++) {
+  SLOT.push(node({ id: 's' + i, hx: HUB.imem.hx - 10 * Math.sin(i * .7), hy: HUB.imem.hy - 62 - i * 14.5, r: 3.2, kind: 'slot', sub: true, idx: i, pres: 0 }));
+  link(i ? SLOT[i - 1] : HUB.imem, SLOT[i], 60, 'sub');
+  if (i > 1) link(SLOT[i - 2], SLOT[i], 25);
+}
+N.forEach(n => { n.dx0 = n.hx; n.dy0 = n.hy; n.sel = 0; n.selD = 0; });
+const KIDS = { regs: REG, dmem: WORD, imem: SLOT, alu: [HUB.aluA, HUB.aluB] };
+function resetWires() { EDGES.forEach(e => { e.hold = null; fresh(e.st); }); }
+function relayout() { N.forEach(n => { n.hx = n.dx0; n.hy = n.dy0; }); resetWires(); }
+
+/* ---------- canvas + layout ---------- */
+const panel = document.querySelector('.panel'), cv = panel.querySelector('canvas'), c = cv.getContext('2d');
+let W = 0, H = 0, sc = 1, ox = 0, oy = 0, clock = 0;
+const homeX = n => ox + n.hx * sc, homeY = n => oy + n.hy * sc;
+function resize() {
+  const r = cv.getBoundingClientRect(); if (!r.width) return;
+  const d = Math.min(2, devicePixelRatio || 1);
+  const old = W ? { ox, oy, sc } : null;
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * d); cv.height = Math.round(H * d); c.setTransform(d, 0, 0, d, 0, 0);
+  sc = Math.min((W - 60) / 1400, (H - 140) / 610);         // design box x 50..1450, y 10..620
+  ox = (W - 1400 * sc) / 2 - 50 * sc; oy = 24 + (H - 140 - 610 * sc) / 2 - 10 * sc;
+  N.forEach(n => {
+    if (old) { n.x = ox + (n.x - old.ox) / old.sc * sc; n.y = oy + (n.y - old.oy) / old.sc * sc; }
+    else { n.x = homeX(n); n.y = homeY(n); }
+  });
+}
+
+/* ---------- physics (Graphs feel, twice the damping) ---------- */
+let drag = null, grab = null, hover = null, hoverE = null;
+const RB = 1000, rubber = m => (1 - 1 / (m * .5 / RB + 1)) * RB;   // about half the pointer travel, stiffening gently
+function dragTarget() {
+  if (moveMode) return [drag.x + drag.ox, drag.y + drag.oy];
+  const dx = drag.x - drag.px0, dy = drag.y - drag.py0, m = Math.hypot(dx, dy) || 1, f = rubber(m) / m;
+  return [drag.sx + dx * f, drag.sy + dy * f];
+}
+function physics(h) {
+  for (const n of N) {
+    n.fx = 0; n.fy = 0;
+    if (!isFinite(n.x) || !isFinite(n.y) || !isFinite(n.vx) || !isFinite(n.vy)) { n.x = homeX(n); n.y = homeY(n); n.vx = n.vy = 0; }   // self-heal
+  }
+  for (const s of SPR) {
+    const a = s.a, b = s.b;
+    const L = Math.hypot(a.hx - b.hx, a.hy - b.hy) * sc;
+    let dx = b.x - a.x, dy = b.y - a.y; const d = Math.hypot(dx, dy) || .001;
+    const f = s.k * (d - L); dx /= d; dy /= d;
+    a.fx += dx * f; a.fy += dy * f; b.fx -= dx * f; b.fy -= dy * f;
+  }
+  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+    if (N[i].rigid || N[j].rigid) continue;
+    const a = N[i], b = N[j], min = (a.r + b.r) * sc * 1.3 + 5 * sc;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    if (Math.abs(dx) > min || Math.abs(dy) > min) continue;
+    const d = Math.hypot(dx, dy) || .01;
+    if (d < min) { const f = 260 * (min - d); dx /= d; dy /= d; a.fx -= dx * f; a.fy -= dy * f; b.fx += dx * f; b.fy += dy * f; }
+  }
+  const damp = Math.exp(-3.2 * h), wv = reduce ? 0 : 5 * sc;
+  for (const n of N) {
+    if (drag && drag.n === n) {
+      const px = n.x, py = n.y;
+      const [tx, ty] = dragTarget();
+      n.x = approach(n.x, tx, 26, h); n.y = approach(n.y, ty, 26, h);
+      n.vx = clamp((n.x - px) / h, -2600, 2600); n.vy = clamp((n.y - py) / h, -2600, 2600);
+      continue;
+    }
+    if (n.rigid) continue;
+    const kh = (n.sub ? 6 : 10) * n.m;                 // home spring scaled by mass: every node returns at the same lively rate
+    n.fx += kh * (homeX(n) - n.x) + wv * Math.sin(clock * .55 + n.ph);
+    n.fy += kh * (homeY(n) - n.y) + wv * Math.cos(clock * .47 + n.ph2);
+    n.vx = (n.vx + n.fx / n.m * h) * damp; n.vy = (n.vy + n.fy / n.m * h) * damp;
+    n.x += n.vx * h; n.y += n.vy * h;
+    const r = n.r * sc + 2;
+    if (n.x < r) { n.x = r; n.vx = Math.abs(n.vx) * .78; }
+    if (n.x > W - r) { n.x = W - r; n.vx = -Math.abs(n.vx) * .78; }
+    if (n.y < r) { n.y = r; n.vy = Math.abs(n.vy) * .78; }
+    if (n.y > H - r) { n.y = H - r; n.vy = -Math.abs(n.vy) * .78; }
+  }
+  for (const n of N) if (n.rigid) { n.x = HUB.alu.x + n.rigid[0] * sc; n.y = HUB.alu.y + n.rigid[1] * sc; n.vx = HUB.alu.vx; n.vy = HUB.alu.vy; }
+}
+
+/* ---------- wire geometry: pins, bends, plucked strings ---------- */
+function pillGeom(n) { const w = 18 * sc, h = (n.n === 2 ? 46 : 86) * sc, rr = w / 2; return { w, h, rr, gap: (h - w) / (n.n - 1) }; }
+function pin(n, q) {
+  if (q == null || n.kind !== 'pill') return [n.x, n.y];
+  const g = pillGeom(n); return [n.x, n.y - g.h / 2 + g.rr + q * g.gap];
+}
+const isOut = (n, q) => n.kind === 'pill' && q == null;
+function endPt(n, q) { return isOut(n, q) ? [n.x + (n.flip ? -1 : 1) * pillGeom(n).w / 2, n.y] : pin(n, q); }
+function edgeBase(e) {                                 // cubic [p0, c1, c2, p3] without any pluck
+  const [ax, ay] = endPt(e.a, e.ap), [bx, by] = endPt(e.b, e.bp);
+  const qx = (ax + bx) / 2 + e.bx * sc, qy = (ay + by) / 2 + e.by * sc;
+  let c1x = ax + 2 / 3 * (qx - ax), c1y = ay + 2 / 3 * (qy - ay), c2x = bx + 2 / 3 * (qx - bx), c2y = by + 2 / 3 * (qy - by);
+  const L = clamp(.35 * Math.hypot(bx - ax, by - ay), 40 * sc, 110 * sc);
+  if (isOut(e.a, e.ap)) { c1x = ax + (e.a.flip ? -L : L); c1y = ay + 2 / 3 * e.by * sc; }               // leave on the output side
+  if (e.b.kind === 'pill' && e.bp != null) { c2x = bx + (e.b.flip ? L : -L); c2y = by + 2 / 3 * e.by * sc; } // arrive on the input side
+  if (e.bDir) { c2x = bx + e.bDir[0] * L; c2y = by + e.bDir[1] * L; }                                     // arrive from a set side
+  if (e.exp) { c1x = ax + .72 * (bx - ax); c1y = ay; c2x = bx; c2y = by + .5 * (ay - by); }   // leaves along the line to the registers, then peels up into control
+  return [ax, ay, c1x, c1y, c2x, c2y, bx, by];
+}
+function edgeGeom(e) {                                 // plus the pluck: moving both controls by 4/3 d moves the midpoint by d
+  const g = edgeBase(e), dx = (e.st.dx || 0) * 4 / 3, dy = (e.st.dy || 0) * 4 / 3;
+  g[2] += dx; g[3] += dy; g[4] += dx; g[5] += dy; return g;
+}
+const bez = (g, t) => { const u = 1 - t, a = u * u * u, b = 3 * u * u * t, cc = 3 * u * t * t, d = t * t * t; return [a * g[0] + b * g[2] + cc * g[4] + d * g[6], a * g[1] + b * g[3] + cc * g[5] + d * g[7]]; };
+function curveOf(a, b) {                               // pulses follow the wire's current (plucked, routed) shape
+  const e = EMAP.get(a.id + '>' + b.id);
+  if (!e) return t => [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t];
+  const g = edgeGeom(e), fwd = e.a === a;
+  return t => bez(g, fwd ? t : 1 - t);
+}
+const fresh = st => { for (const k in st) delete st[k]; };
+function strStep(st, g, dt, gr, hold) {
+  if (!(dt > 0)) return;
+  if (!isFinite(st.dx) || !isFinite(st.dy) || !isFinite(st.vx) || !isFinite(st.vy)) fresh(st);   // self-heal
+  const ax = g[0], ay = g[1], bx = g[6], by = g[7];
+  let ux = bx - ax, uy = by - ay; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+  const px = -uy, py = ux, mx = (ax + bx) / 2, my = (ay + by) / 2;
+  if (st.lx === undefined) Object.assign(st, { lx: mx, ly: my, pvx: 0, pvy: 0, dx: 0, dy: 0, vx: 0, vy: 0 });
+  const vmx = (mx - st.lx) / dt, vmy = (my - st.ly) / dt;
+  const amx = clamp((vmx - st.pvx) / dt, -6e4, 6e4), amy = clamp((vmy - st.pvy) / dt, -6e4, 6e4);
+  st.lx = mx; st.ly = my; st.pvx = vmx; st.pvy = vmy;
+  if (gr) {
+    const [cx0, cy0] = bez(g, .5);                     // the wire's own midpoint: pull it toward the pointer
+    let tx = gr.x - cx0, ty = gr.y - cy0;
+    const m = Math.hypot(tx, ty), lim = .5 * L; if (m > lim) { tx *= lim / m; ty *= lim / m; }
+    const ox2 = st.dx, oy2 = st.dy;
+    st.dx = approach(st.dx, tx, 30, dt); st.dy = approach(st.dy, ty, 30, dt);
+    st.vx = (st.dx - ox2) / dt; st.vy = (st.dy - oy2) / dt;
+    return;                                            // free 2D pull while held
+  }
+  const om = 2 * Math.PI * clamp(520 / L, 2.2, 9), n = Math.max(1, Math.ceil(dt / (1 / 240))), h = dt / n;
+  const hx = hold ? hold[0] : 0, hy = hold ? hold[1] : 0;
+  for (let i = 0; i < n; i++) {
+    st.vx += (-om * om * (st.dx - hx) - 9.6 * st.vx - amx * .3) * h;   // twice Epsilon's damping
+    st.vy += (-om * om * (st.dy - hy) - 9.6 * st.vy - amy * .3) * h;
+    st.dx += st.vx * h; st.dy += st.vy * h;
+  }
+  const rx = st.dx - hx, ry = st.dy - hy, dd = rx * px + ry * py, vv = st.vx * px + st.vy * py;   // vibrate across the wire only
+  st.dx = hx + dd * px; st.dy = hy + dd * py; st.vx = vv * px; st.vy = vv * py;
+}
+let moveMode = false;
+function updateStrings(dt) { for (const e of EDGES) strStep(e.st, edgeBase(e), dt, grab && grab.e === e ? grab : null, e.hold); }
+
+/* ---------- arrival swell: eased in, eased out (about 1.1 s at 1x) ---------- */
+const KR = .18, KF = .57;                              // original length, eased both ways
+function kickVal(n) {
+  const t = ptime - n.k0;
+  if (t < 0 || t > KR + KF) return 0;
+  if (t < KR) return n.kFrom + (n.kA - n.kFrom) * inOutCubic(t / KR);     // smooth rise, no snap
+  return n.kA * (1 - inOutCubic((t - KR) / KF));                           // smooth settle
+}
+function kickNode(n, amp) { const cur = kickVal(n); n.kFrom = cur; n.kA = Math.max(amp, cur); n.k0 = ptime; }
+
+/* ---------- pulses with fading trails ---------- */
+let pulses = [], visRegs = new Int32Array(32), visMem = new Int32Array(16), curSlot = -1, ctrlStart = -9, ctrlSig = [], access = new Set();
+let timers = [], rings = [], opSym = '', opAt = -9, ptime = 0, speed = 1, running2 = false, nextRun = 0;
+const RUNGAP = 2.8;
+const STAGE = .32, DUR = .42, TRAIL = .6;
+function ev(s, a, b, lab, main = true, onArrive) { pulses.push({ a, b, s, t0: ptime + s * STAGE, dur: main ? DUR : .3, lab, main, onArrive, arrived: false }); }
+const SIG = { R: ['regwrite', 'aluop'], IA: ['regwrite', 'alusrc', 'aluop'], LD: ['regwrite', 'alusrc', 'memread', 'memtoreg'], ST: ['alusrc', 'memwrite'],
+  BR: ['branch', 'aluop'], JAL: ['jump', 'regwrite'], JALR: ['jump', 'regwrite', 'alusrc'], LUI: ['regwrite', 'alusrc'], AUIPC: ['regwrite'], SYS: ['halt'] };
+const OPSYM = { add: '+', sub: '−', sll: '<<', srl: '>>>', sra: '>>', slt: '<', sltu: '<u', xor: '^', or: '|', and: '&', pass: '=',
+  beq: '=', bne: '≠', blt: '<', bge: '≥', bltu: '<u', bgeu: '≥u',
+  mul: '×', mulh: '×h', div: '÷', divu: '÷u', rem: '%', remu: '%u' };
+function buildEvents(r) {
+  const i = r.i, v = r.vals, K = i.kind, first = pulses.length;
+  const regSnap = Int32Array.from(regs), memSnap = new Int32Array(16);
+  for (let k = 0; k < 16; k++) memSnap[k] = dv.getInt32(k * 4, true);
+  const showRegs = () => { visRegs = regSnap; }, showMem = () => { visMem = memSnap; };
+  const sels = [], pick = (mux, k) => { sels.push([mux, k]); };   // selects are driven by control, not by the data
+  const block = (st, from, mux, q, lab) => ev(st, from, mux, lab, true, () => rings.push({ n: mux, q, t0: ptime }));   // held but not chosen: stops at its dot
+  const sym = K === 'BR' ? OPSYM[i.mn] : ['LD', 'ST', 'JAL', 'JALR', 'AUIPC'].includes(K) ? '+' : OPSYM[r.aluName] || '';
+  access = new Set();
+  ev(0, HUB.pc, HUB.imem, v.pc_imem, true, () => { curSlot = r.pc >> 2; if (SLOT[curSlot]) kickNode(SLOT[curSlot], 1); });
+  const CH = DUR / 1.25, CT = DUR + CH;                  // control hop 1.25x quicker than a normal hop, leaving at fetch
+  ctrlStart = ptime + CT; ctrlSig = SIG[K];
+  const read = two => {
+    ev(1, HUB.imem, HUB.regs, two ? `x${i.rs1} x${i.rs2}` : `x${i.rs1}`);
+    ev(1.7, REG[i.rs1], HUB.regs, null, false); access.add(i.rs1);
+    if (two) { ev(1.7, REG[i.rs2], HUB.regs, null, false); access.add(i.rs2); }
+  };
+  const imm = lab => ev(1, HUB.imem, HUB.imm, lab);
+  // operand B through the alu src mux; operand A straight from rs1, timed to land on the same frame
+  const alu = (bFromImm, useA = true) => {
+    const bLab = bFromImm ? dec(K === 'LUI' || K === 'AUIPC' ? i.imm << 12 : i.imm) : v.rd2_asrc;
+    if (bFromImm) { ev(2, HUB.imm, HUB.asrc, bLab, true, pick(HUB.asrc, 1)); block(2, HUB.regs, HUB.asrc, 0, v.rd2_asrc); }
+    else { ev(2, HUB.regs, HUB.asrc, v.rd2_asrc, true, pick(HUB.asrc, 0)); block(2, HUB.imm, HUB.asrc, 1, dec(i.imm)); }
+    ev(2.7, HUB.asrc, HUB.aluB, bLab);
+    if (useA) ev(2.7, HUB.regs, HUB.aluA, v.rd1_alu);
+    ev(3.4, HUB.aluB, HUB.alu, null, false, () => { opSym = sym; opAt = ptime; });
+    if (useA) ev(3.4, HUB.aluA, HUB.alu, null, false);
+  };
+  const writeBack = (from, sel, lab) => {
+    if (sel === null) ev(5, from, HUB.regs, lab);          // link and auipc values go straight in
+    else { ev(5, from, HUB.wb, lab, true, pick(HUB.wb, sel)); ev(5.7, HUB.wb, HUB.regs, v.wb_regs); }
+    if (i.rd) { access.add(i.rd); ev(sel === null ? 5.7 : 6.4, HUB.regs, REG[i.rd], null, false, showRegs); } else showRegs();
+  };
+  const linkWrite = () => { if (i.rd) { access.add(i.rd); ev(5, HUB.regs, REG[i.rd], null, false, showRegs); } else showRegs(); };   // return address lands in rd
+  const word = r.mem ? r.mem.addr >> 2 : -1;
+  switch (K) {
+    case 'R': read(true); imm(dec(i.imm)); alu(false); writeBack(HUB.alu, 0, v.alu_wb); break;
+    case 'IA': read(false); imm(v.imm_asrc); alu(true); writeBack(HUB.alu, 0, v.alu_wb); break;
+    case 'LD': read(false); imm(v.imm_asrc); alu(true);
+      ev(4, HUB.alu, HUB.dmem, v.alu_dmem); if (WORD[word]) ev(4.6, WORD[word], HUB.dmem, null, false);
+      writeBack(HUB.dmem, 1, v.dmem_wb); block(5, HUB.alu, HUB.wb, 0, v.alu_wb); break;
+    case 'ST': read(true); imm(v.imm_asrc); alu(true);
+      ev(4, HUB.alu, HUB.dmem, v.alu_dmem); ev(4, HUB.regs, HUB.dmem, v.rd2_dmem);
+      if (WORD[word]) ev(4.8, HUB.dmem, WORD[word], null, false, showMem); else showMem(); break;
+    case 'BR': read(true); imm(v.imm_badd); alu(false); ev(4, HUB.alu, HUB.tgt, r.taken ? v.badd_pcmux : 'not taken'); break;
+    case 'JAL': imm(v.imm_badd); alu(true, false); ev(4, HUB.alu, HUB.tgt, v.badd_pcmux); linkWrite(); break;
+    case 'JALR': read(false); imm(v.imm_badd); alu(true); ev(4, HUB.alu, HUB.tgt, v.badd_pcmux); linkWrite(); break;
+    case 'LUI': imm(v.imm_asrc); alu(true, false); writeBack(HUB.alu, 0, v.alu_wb); break;
+    case 'AUIPC': imm(v.imm_badd); alu(true, false); writeBack(HUB.alu, 0, v.badd_wb); break;
+  }
+  let jumped = false;
+  if (K !== 'SYS') {
+    jumped = r.next !== ((r.pc + 4) | 0);
+    if (jumped) { ev(4.7, HUB.tgt, HUB.npc, v.badd_pcmux, true, pick(HUB.npc, 1)); ev(6.7, HUB.npc, HUB.pc, v.pcmux_pc); }
+    else { pick(HUB.npc, 0); if (K === 'BR') block(4.7, HUB.tgt, HUB.npc, 1, hex((r.pc + i.imm) | 0)); }   // untaken target is blocked
+  }
+  // control fires at decode and sets every select line before the operands get there
+  timers.push({ t: ctrlStart, fn: () => sels.forEach(([m, k]) => { if (m !== HUB.npc) m.sel = k; }) });   // alu src, write back: when control lands
+  timers.push({ t: ptime + .5, fn: () => sels.forEach(([m, k]) => { if (m === HUB.npc) m.sel = k; }) });    // next pc: early, as pc reaches pc + 4
+  // close up empty stages so every instruction flows without dead gaps
+  const mine = pulses.slice(first);
+  const used = [...new Set(mine.map(pu => Math.floor(pu.s)))].sort((a, b) => a - b), map = {};
+  used.forEach((st, k) => { map[st] = k; });
+  for (const pu of mine) { pu.s = map[Math.floor(pu.s)] + (pu.s - Math.floor(pu.s)); pu.t0 = ptime + pu.s * STAGE; }
+  // pc + 4 is combinational and runs on fixed times, a touch slower (0.5 s hops): control decodes at 0.74 s and sets
+  // next pc, then pc + 4 lands at 1.0 s and goes straight on into pc, or is blocked there if a jump was chosen
+  const at = (t, d, a, b, lab, fn) => pulses.push({ a, b, t0: ptime + t, dur: d, lab, main: true, onArrive: fn, arrived: false });
+  at(DUR, CH, HUB.imem, HUB.ctrl, v.imem_ctrl);          // opcode and funct fields into control
+  if (K !== 'SYS') {
+    const D4 = .5;
+    at(0, D4, HUB.pc, HUB.add4, v.pc_add4);
+    if (jumped) at(D4, D4, HUB.add4, HUB.npc, v.add4_pcmux, () => rings.push({ n: HUB.npc, q: 0, t0: ptime }));
+    else { at(D4, D4, HUB.add4, HUB.npc, v.add4_pcmux); at(2 * D4, DUR, HUB.npc, HUB.pc, v.pcmux_pc); }
+  }
+}
+
+/* ---------- drawing ---------- */
+function circle(x, y, r) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); }
+function envelope(t0, hold) {                          // quick rise, hold, non-linear fade
+  const t = ptime - t0;
+  if (t < 0) return 0;
+  if (t < .25) return outExpo(t / .25);
+  if (t < hold) return 1;
+  return Math.pow(clamp(1 - (t - hold) / 1.1), 2.2);
+}
+const ctrlAct = () => envelope(ctrlStart, 1.1);
+function drawNode(n, x, y, r) {
+  if (r <= .05) return;
+  switch (n.kind) {
+    case 'ink': circle(x, y, r); c.fillStyle = INK; c.fill(); break;
+    case 'orange': circle(x, y, r); c.fillStyle = OR; c.fill(); break;
+    case 'ring': circle(x, y, r); c.fillStyle = PAPER; c.fill(); c.lineWidth = 1; c.strokeStyle = INK; c.stroke(); break;
+    case 'target':
+      circle(x, y, r); c.fillStyle = PAPER; c.fill(); c.lineWidth = 1.4; c.strokeStyle = OR; c.stroke();
+      circle(x, y, r * .3); c.fillStyle = OR; c.fill(); break;
+    case 'half':
+      c.beginPath(); c.arc(x, y, r, Math.PI / 2, Math.PI * 1.5); c.closePath(); c.fillStyle = INK; c.fill();
+      c.beginPath(); c.arc(x, y, r, -Math.PI / 2, Math.PI / 2); c.closePath(); c.fillStyle = OR; c.fill(); break;
+    case 'stripe': {
+      c.save(); circle(x, y, r); c.fillStyle = PAPER; c.fill(); c.clip();
+      const bands = 9, h = 2 * r / bands; c.fillStyle = INK;
+      for (let i = 0; i < bands; i++) c.fillRect(x - r, y - r + i * h + h * .22, 2 * r, h * .56);
+      c.restore(); break;
+    }
+    case 'ctrl': {                                     // solid disc; its outline lights when control fires
+      const a = ctrlAct();
+      circle(x, y, r); c.fillStyle = INK; c.fill();
+      c.lineWidth = Math.min(r * .45, Math.max(2.5, 4.5 * sc)); circle(x, y, Math.max(.1, r - c.lineWidth / 2)); c.strokeStyle = mixColor(a); c.stroke();
+      break;
+    }
+    case 'pill': {                                     // mux: capsule, one dot per input, the chosen one orange
+      const k = r / (n.r * sc), g = pillGeom(n), w = g.w * k, h = g.h * k, rr = w / 2, gap = g.gap * k;
+      c.beginPath(); c.moveTo(x - rr, y - h / 2 + rr); c.arc(x, y - h / 2 + rr, rr, Math.PI, 0); c.lineTo(x + rr, y + h / 2 - rr); c.arc(x, y + h / 2 - rr, rr, 0, Math.PI); c.closePath();
+      c.fillStyle = INK; c.fill();
+      for (let q = 0; q < n.n; q++) { circle(x, y - h / 2 + rr + q * gap, 2.4 * sc * k); c.fillStyle = PAPER; c.fill(); }
+      circle(x, y - h / 2 + rr + n.selD * gap, 4.4 * sc * k); c.fillStyle = OR; c.fill();
+      break;
+    }
+    case 'atom':                                       // alu operand: black ball with a white letter
+      circle(x, y, r); c.fillStyle = INK; c.fill();
+      c.font = `400 ${Math.max(8, 10.4 * sc * (r / (n.r * sc)))}px ${FONT}`; c.fillStyle = PAPER; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+      { const m = c.measureText(n.letter); c.fillText(n.letter, x, y + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2); }
+      c.textAlign = 'left'; break;
+    case 'alu': {                                      // alu core: shows the operation as it fires
+      const a = envelope(opAt, .9);
+      circle(x, y, r * (1 + .1 * a)); c.fillStyle = OR; c.fill();   // a slight swell from the centre as the sign shows
+      if (a > .01 && opSym) {
+        c.globalAlpha = a; c.font = `300 ${Math.max(11, r * (opSym.length > 2 ? .62 : opSym.length > 1 ? .8 : 1.05))}px ${FONT}`;
+        c.fillStyle = PAPER; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+        const m = c.measureText(opSym); c.fillText(opSym, x, y + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+        c.textAlign = 'left'; c.globalAlpha = 1;
+      }
+      break;
+    }
+    case 'reg': circle(x, y, r); c.fillStyle = visRegs[n.idx] !== 0 ? OR : n.idx === 0 ? '#9a9a96' : INK; c.fill(); break;
+    case 'word': circle(x, y, r); c.fillStyle = visMem[n.idx] !== 0 ? OR : INK; c.fill(); break;
+    case 'slot': circle(x, y, r); c.fillStyle = n.idx === curSlot ? OR : INK; c.fill(); break;
+  }
+}
+const intro = n => reduce ? 1 : outExpo(clamp((clock - n.born) / .9));
+let gGuide = 1, gVal = 1;
+function draw() {
+  c.clearRect(0, 0, W, H);
+  if (gGuide > .005) {                                 // routing grid, as in Anneal
+    const g = Math.max(14, 26 * sc);
+    c.strokeStyle = `rgba(26,26,26,${.05 * gGuide})`; c.lineWidth = 1; c.beginPath();
+    for (let x = g; x < W; x += g) { c.moveTo(Math.round(x) + .5, 0); c.lineTo(Math.round(x) + .5, H); }
+    for (let y = g; y < H; y += g) { c.moveTo(0, Math.round(y) + .5); c.lineTo(W, Math.round(y) + .5); }
+    c.stroke();
+  }
+  // edges: plain ink (orange while plucked or hovered), drawn growing in
+  c.lineCap = 'round';
+  const hl = grab ? grab.e : hoverE;
+  for (const e of EDGES) {
+    const a = e.a, b = e.b, p = Math.min(intro(a), intro(b)) * Math.min(a.pres, b.pres);
+    if (p <= .01) continue;
+    const g = edgeGeom(e), isH = e === hl;
+    c.globalAlpha = isH ? 1 : e.main ? .42 : e.bond ? .7 : .16;
+    c.strokeStyle = isH ? OR : INK;
+    c.lineWidth = (e.main || e.bond ? Math.max(.8, sc) : Math.max(.6, .75 * sc)) * (isH ? 1.5 : 1);
+    c.beginPath(); c.moveTo(g[0], g[1]);
+    if (p < .999) { const n = 24; for (let k = 1; k <= n; k++) { const [x, y] = bez(g, p * k / n); c.lineTo(x, y); } }
+    else c.bezierCurveTo(g[2], g[3], g[4], g[5], g[6], g[7]);
+    c.stroke();
+  }
+  c.globalAlpha = 1;
+  // pulses: eased head, trail fades non-linearly behind it
+  const K = 18;
+  for (const pu of pulses) {
+    const head = (ptime - pu.t0) / pu.dur; if (head < 0) continue;
+    const f = curveOf(pu.a, pu.b), at = t => f(inOutCubic(clamp(t)));
+    const t1 = Math.min(1, head), t0 = Math.max(0, head - TRAIL);
+    c.lineWidth = (pu.main ? 2 : 1.4) * Math.max(.8, sc); c.strokeStyle = OR; c.lineCap = 'butt';
+    for (let k = 0; k < K; k++) {
+      const ta = t0 + (t1 - t0) * k / K, tb = t0 + (t1 - t0) * (k + 1) / K, tm = (ta + tb) / 2;
+      const al = Math.pow(clamp((tm - (head - TRAIL)) / TRAIL), 2.4);
+      if (al < .01) continue;
+      const [xa, ya] = at(ta), [xb, yb] = at(tb);
+      c.globalAlpha = al; c.beginPath(); c.moveTo(xa, ya); c.lineTo(xb, yb); c.stroke();
+    }
+    if (head <= 1) { const [x, y] = at(head); c.globalAlpha = 1; circle(x, y, (pu.main ? 3.8 : 2.6) * Math.max(.8, sc)); c.fillStyle = OR; c.fill(); }
+    if (pu.main && pu.lab && gVal > .01) {
+      const [x, y] = at(Math.min(head, 1));
+      c.globalAlpha = gVal * (head <= 1 ? 1 : Math.pow(clamp(1 - (head - 1) / TRAIL), 2));
+      c.font = `400 ${Math.max(9, 10 * Math.min(1.3, sc))}px ${FONT}`; c.fillStyle = OR; c.textBaseline = 'alphabetic';
+      c.fillText(pu.lab, x + 7, y - 7);
+    }
+  }
+  c.globalAlpha = 1; c.lineCap = 'round';
+  // nodes
+  for (const n of N) {
+    const k = intro(n) * n.pres; if (k <= .01) continue;
+    drawNode(n, n.x, n.y, n.r * sc * k * (n.kind === 'alu' ? 1 : 1 + .32 * n.hov + .45 * kickVal(n)));
+  }
+  // blocked inputs: a small ink ring flashes at the mux dot where the pulse stopped
+  for (const g of rings) {
+    const t = (ptime - g.t0) / .6; if (t < 0 || t > 1) continue;
+    const [x, y] = pin(g.n, g.q);
+    c.globalAlpha = Math.pow(1 - t, 1.6); c.strokeStyle = INK; c.lineWidth = Math.max(.6, .7 * sc);
+    circle(x, y, (7 + 11 * outExpo(t)) * Math.max(.8, sc)); c.stroke();
+  }
+  c.globalAlpha = 1;
+  // small lettering, as in Anneal
+  c.font = `400 ${Math.max(9, 10 * Math.min(1.3, sc))}px ${FONT}`; c.textBaseline = 'alphabetic';
+  for (const n of N) {
+    if (!n.label) continue;
+    const k = intro(n); if (k < .02) continue;
+    const rr = (n.kind === 'pill' ? pillGeom(n).w / 2 / sc + 2 : n.r) * (1 + .32 * n.hov) * sc;
+    c.globalAlpha = k * (.7 + .3 * n.hov); c.fillStyle = n.hov > .5 ? OR : INK;
+    c.fillText(n.label, n.x + rr * .75 + 5, n.y - (n.kind === 'pill' ? pillGeom(n).h / 2 : rr * .75) - 4);
+  }
+  // control: asserted signals listed under its label, fading with the outline
+  const ca = ctrlAct();
+  if (ca > .01) {
+    const n = HUB.ctrl, rr = n.r * sc;
+    c.fillStyle = OR;
+    ctrlSig.forEach((s, j) => { c.globalAlpha = ca; c.fillText(s, n.x + rr * .75 + 5, n.y - rr * .75 + 10 + j * 13); });
+  }
+  // register and word names where they matter
+  c.font = `400 ${Math.max(8, 9 * Math.min(1.3, sc))}px ${FONT}`; c.textBaseline = 'middle'; c.textAlign = 'center';
+  for (const n of REG) {
+    const hot = access.has(n.idx) && rec, nz = visRegs[n.idx] !== 0;
+    if (!hot && !nz) continue;
+    const ax = n.x - HUB.regs.x, ay = n.y - HUB.regs.y, d = Math.hypot(ax, ay) || 1;
+    c.globalAlpha = intro(n) * (hot ? 1 : .55); c.fillStyle = hot ? OR : INK;
+    c.fillText('x' + n.idx, n.x + ax / d * 13, n.y + ay / d * 13);
+  }
+  for (const n of WORD) {
+    if (visMem[n.idx] === 0 && !(rec && rec.mem && (rec.mem.addr >> 2) === n.idx)) continue;
+    const ax = n.x - HUB.dmem.x, ay = n.y - HUB.dmem.y, d = Math.hypot(ax, ay) || 1;
+    c.globalAlpha = intro(n) * .7; c.fillStyle = INK;
+    c.fillText(hex(n.idx * 4), n.x + ax / d * 16, n.y + ay / d * 16);
+  }
+  c.textAlign = 'left'; c.globalAlpha = 1;
+}
+
+/* ---------- interaction: drag nodes (they stay), pluck wires ---------- */
+const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+function hitNode(x, y, extra = 0) {
+  let best = null, bd = 1e9;
+  for (const n of N) {
+    if (n.pres < .5) continue;
+    let d;
+    if (n.kind === 'pill') { const g = pillGeom(n); d = Math.abs(x - n.x) < g.w / 2 + 6 + extra && Math.abs(y - n.y) < g.h / 2 + 6 + extra ? 0 : 1e9; }
+    else d = Math.hypot(n.x - x, n.y - y) < n.r * sc + (n.sub ? 6 : 10) + extra ? Math.hypot(n.x - x, n.y - y) - (n.sub ? 0 : 4) : 1e9;
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+function hitEdge(x, y, tol = 11) {
+  let best = null, bd = tol;
+  for (const e of EDGES) {
+    if (Math.min(e.a.pres, e.b.pres) < .5) continue;
+    const g = edgeGeom(e);
+    let [px, py] = bez(g, .04);
+    for (let k = 1; k <= 46; k++) {                    // distance to each short segment of the curve, not to sample points
+      const [qx, qy] = bez(g, .04 + .92 * k / 46), sx = qx - px, sy = qy - py, l2 = sx * sx + sy * sy || 1;
+      const u = clamp(((x - px) * sx + (y - py) * sy) / l2), d = Math.hypot(px + sx * u - x, py + sy * u - y);
+      if (d < bd) { bd = d; best = e; }
+      px = qx; py = qy;
+    }
+  }
+  return best;
+}
+cv.addEventListener('touchstart', e => { const [x, y] = pt(e.touches[0]); if (hitNode(x, y, 8) || hitEdge(x, y, 24)) e.preventDefault(); }, { passive: false });
+function endGesture() {
+  if (drag && moveMode) {                              // Move on: a dropped node keeps its new spot; its ring, spine or atoms come too
+    const n = drag.n, dx = (n.x - homeX(n)) / sc, dy = (n.y - homeY(n)) / sc;
+    if (isFinite(dx) && isFinite(dy)) { n.hx += dx; n.hy += dy; (KIDS[n.id] || []).forEach(k => { k.hx += dx; k.hy += dy; }); }
+  }
+  if (grab && moveMode) grab.e.hold = [grab.e.st.dx || 0, grab.e.st.dy || 0];   // Move on: the bent shape becomes its rest shape
+  // Move off: nothing is stored, so nodes and wires spring back to where they were
+  drag = null; grab = null;
+  cv.style.cursor = hover || hoverE ? 'grab' : 'default';
+}
+cv.addEventListener('pointerdown', e => {
+  endGesture();                                        // never carry a stale gesture into a new one
+  const touch = e.pointerType === 'touch', [x, y] = pt(e), n = hitNode(x, y, touch ? 8 : 0);
+  if (n) { const t = n.rigid ? HUB.alu : n; drag = { n: t, x, y, ox: t.x - x, oy: t.y - y, px0: x, py0: y, sx: t.x, sy: t.y }; }
+  else { const ed = hitEdge(x, y, touch ? 24 : 11); if (!ed) return; grab = { e: ed, x, y }; }
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  cv.style.cursor = 'grabbing';
+});
+cv.addEventListener('pointermove', e => {
+  const [x, y] = pt(e);
+  if (drag) { drag.x = x; drag.y = y; return; }
+  if (grab) { grab.x = x; grab.y = y; return; }
+  hover = hitNode(x, y); hoverE = hover ? null : hitEdge(x, y);
+  cv.style.cursor = hover || hoverE ? 'grab' : 'default';
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => cv.addEventListener(t, endGesture));
+cv.addEventListener('pointerleave', () => { if (!drag && !grab) { hover = null; hoverE = null; } });
+
+/* =========================================================
+   UI: program editor, registers, memory, controls
+   ========================================================= */
+const DEFAULT = `start:
+  addi x1, x0, -2
+  addi x2, x0, 1
+  sra  x3, x1, x2
+  srl  x4, x1, x2
+  ble  x3, x4, end
+  jal  x0, end
+
+end:`;
+const PROGRAMS = {
+  fib: `  addi t0, x0, 0
+  addi t1, x0, 1
+  addi t2, x0, 10
+  addi t3, x0, 0
+loop:
+  sw   t0, 0(t3)
+  add  t4, t0, t1
+  mv   t0, t1
+  mv   t1, t4
+  addi t3, t3, 4
+  addi t2, t2, -1
+  bnez t2, loop
+  ebreak`,
+  series: `  addi t1, x0, 10
+loop:
+  add  t0, t0, t1
+  addi t1, t1, -1
+  bnez t1, loop`,
+  arith: `  li   a0, 45
+  li   a1, 3
+  add  t0, a0, a1
+  sub  t1, a0, a1
+  mul  t2, a0, a1
+  div  t3, a0, a1
+  rem  t4, a0, a1
+  and  t5, a0, a1
+  or   t6, a0, a1
+  xor  s0, a0, a1
+  sll  s1, a0, a1
+  srl  s2, a0, a1
+  slt  s3, a1, a0
+  ebreak`,
+};
+const picks = document.querySelectorAll('#picks .pk');   // program picks only; the register format picks are separate
+// register value format: hex (32-bit, zero padded), signed or unsigned
+let regFmt = 'signed';
+const fmtReg = v => regFmt === 'hex' ? hex8(v) : regFmt === 'unsigned' ? String(v >>> 0) : String(v);
+const fpicks = document.querySelectorAll('#rfmt .pk');
+// Hex selects hex. Signed selects signed; clicking Signed while it is on turns it off, giving unsigned (neither pressed).
+fpicks.forEach(p => p.addEventListener('click', () => {
+  const f = p.dataset.fmt;
+  regFmt = f === 'signed' && regFmt === 'signed' ? 'unsigned' : f;
+  fpicks.forEach(q => q.setAttribute('aria-pressed', q.dataset.fmt === regFmt));
+  renderRegs();
+}));
+const markPick = k => picks.forEach(p => p.setAttribute('aria-pressed', p.dataset.prog === k));
+let customText = DEFAULT;                              // Custom holds whatever you last typed
+picks.forEach(p => p.addEventListener('click', () => { const k = p.dataset.prog; src.value = k === 'custom' ? customText : PROGRAMS[k]; markPick(k); doAssemble(); }));
+const src = document.getElementById('src'), edbg = document.getElementById('edbg'), errEl = document.getElementById('err');
+const elIns = document.getElementById('ins'), elMeta = document.getElementById('meta'), elCyc = document.getElementById('cyc'), elStat = document.getElementById('stat');
+const regsEl = document.getElementById('regs'), memEl = document.getElementById('mem');
+const btnStep = document.querySelector('[data-act=step]'), btnRun = document.querySelector('[data-act=run]');
+let okProg = false, running = null, curLine = -1;
+
+function renderEditor() {
+  const lines = src.value.split('\n');
+  edbg.innerHTML = lines.map((l, i) => `<div class="${i === curLine ? 'cur' : ''}">${l.replace(/&/g, '&amp;').replace(/</g, '&lt;') || ' '}</div>`).join('');
+  src.style.height = 'auto'; src.style.height = src.scrollHeight + 'px';
+}
+function renderRegs() {
+  let h = '';
+  const rows = [];
+  for (let i = 0; i < 32; i++) {
+    const v = regs[i], cls = i === lastReg && rec ? 'hot' : v === 0 ? 'z' : '';
+    rows[i] = `<div class="${cls}"><span>x${i}</span><span class="a">${ABI[i]}</span><span class="v">${fmtReg(v)}</span></div>`;
+  }
+  // order so column one holds x0..x15 and column two x16..x31
+  for (let r = 0; r < 16; r++) h += rows[r] + rows[r + 16];
+  regsEl.innerHTML = h;
+}
+function renderMem() {
+  const out = [];
+  for (let a = 0; a < MEMSZ; a += 4) { const v = dv.getInt32(a, true); if (v !== 0) out.push(`<div class="${lastMem >= 0 && (lastMem >> 2) === a >> 2 ? 'hot' : ''}"><span>${hex(a)}</span><span>${v}</span></div>`); }
+  memEl.innerHTML = out.length ? out.join('') : '<div style="opacity:.45">empty</div>';
+}
+const TYPE = { R: 'r-type', IA: 'i-type', LD: 'load', ST: 'store', BR: 'branch', JAL: 'jump', JALR: 'jump', LUI: 'upper', AUIPC: 'upper', SYS: 'system' };
+function renderNow() {
+  elCyc.textContent = 'cycle ' + cycle;
+  elStat.textContent = !okProg ? 'error' : halted ? 'halted' : running ? 'running' : 'ready';
+  if (rec) {
+    elIns.textContent = rec.i.text;
+    const extra = rec.i.kind === 'BR' ? (rec.taken ? 'taken' : 'not taken') : rec.wbReg > 0 ? `x${rec.wbReg} = ${regs[rec.wbReg]}` : rec.mem && rec.mem.write ? `mem[${hex(rec.mem.addr)}]` : '';
+    elMeta.innerHTML = `<span>pc ${hex(rec.pc)}</span><span>${TYPE[rec.i.kind]}</span><span>${hex8(rec.i.word)}</span>${extra ? `<span>${extra}</span>` : ''}`;
+  } else {
+    const first = prog[0];
+    elIns.textContent = okProg ? (first ? 'ready' : 'empty') : 'error';
+    elMeta.innerHTML = `<span>pc ${hex(pc)}</span>${first ? `<span>next ${first.text}</span>` : ''}`;
+  }
+  btnStep.disabled = !okProg || halted;
+  btnRun.disabled = !okProg || halted;
+  btnRun.textContent = running ? 'Pause' : 'Run';
+}
+function resetMachine() {
+  regs = new Int32Array(32); mem = new Uint8Array(MEMSZ); dv = new DataView(mem.buffer);
+  pc = 0; cycle = 0; halted = !prog.length; rec = null; lastReg = -1; lastMem = -1; curLine = -1;
+  pulses = []; visRegs = new Int32Array(32); visMem = new Int32Array(16); curSlot = -1; ctrlStart = -9; access = new Set();
+  N.forEach(n => { n.sel = 0; }); opSym = ''; opAt = -9; rings = []; timers = [];
+  stopRun(); renderEditor(); renderRegs(); renderMem(); renderNow();
+}
+function doAssemble() {
+  try { prog = assemble(src.value); okProg = true; errEl.textContent = ''; }
+  catch (e) { prog = []; okProg = false; errEl.textContent = e && e.msg ? `line ${e.line + 1}: ${e.msg}` : String(e); }
+  resetMachine();
+}
+function doStep() {
+  if (!okProg || halted) return;
+  let r;
+  try { r = step(); } catch (e) { halted = true; errEl.textContent = String(e); stopRun(); renderNow(); return; }
+  if (!r) { renderNow(); stopRun(); return; }
+  rec = r; curLine = r.i.line;
+  lastReg = r.wbReg > 0 ? r.wbReg : -1; lastMem = r.mem ? r.mem.addr : -1;
+  buildEvents(r);
+  renderEditor(); renderRegs(); renderMem(); renderNow();
+  if (halted) stopRun();
+}
+function stopRun() { running = null; }
+document.querySelector('.br').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+  const act = b.dataset.act;
+  if (act === 'step') { stopRun(); doStep(); }
+  if (act === 'run') { if (running) stopRun(); else { doStep(); if (!halted) running = true; nextRun = ptime + RUNGAP; } renderNow(); }
+  if (act === 'reset') resetMachine();
+  if (act === 'layout') relayout();
+  if (act === 'move') { moveMode = !moveMode; b.setAttribute('aria-pressed', moveMode); }
+});
+addEventListener('keydown', e => {
+  if (e.target === src) return;
+  if (e.key === 'ArrowRight' || e.key === 's') { stopRun(); doStep(); }
+});
+let asmT = null;
+src.addEventListener('input', () => { customText = src.value; markPick('custom'); renderEditor(); clearTimeout(asmT); asmT = setTimeout(doAssemble, 350); });
+src.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); const s = src.selectionStart; src.setRangeText('  ', s, src.selectionEnd, 'end'); src.dispatchEvent(new Event('input')); }
+});
+try { localStorage.removeItem('undefined'); } catch (_) {}
+document.body.classList.remove('undefined');
+document.querySelectorAll('.toggle[data-cls]').forEach(b => {
+  const cls = b.dataset.cls, key = b.dataset.key;
+  try { const v = localStorage.getItem(key); if (v != null) document.body.classList.toggle(cls, v === '1'); } catch (_) {}
+  const sync = () => b.setAttribute('aria-pressed', document.body.classList.contains(cls)); sync();
+  b.addEventListener('click', () => { const on = document.body.classList.toggle(cls); sync(); try { localStorage.setItem(key, on ? '1' : '0'); } catch (_) {} });
+});
+const route = () => { document.body.classList.toggle('bare', location.hash === '#bare'); requestAnimationFrame(resize); };
+addEventListener('hashchange', route);
+
+/* =========================================================
+   Loop
+   ========================================================= */
+let last = performance.now();
+function frame(now) {
+  const dt = clamp((now - last) / 1000, .001, .05); last = now; clock += dt;   // never zero or negative, even if a frame repeats its timestamp
+  ptime += dt * speed;                                  // pulse time runs at the chosen speed
+  if (running && okProg && !halted && ptime >= nextRun) { doStep(); nextRun = ptime + RUNGAP; }
+  const B = document.body.classList;
+  gGuide = approach(gGuide, B.contains('guides-on') ? 1 : 0, 7, dt);
+  gVal = approach(gVal, B.contains('values-on') ? 1 : 0, 7, dt);
+  const nSlots = Math.min(16, prog.length);
+  SLOT.forEach((s, i) => { s.pres = approach(s.pres, i < nSlots ? 1 : 0, 8, dt); });
+  const sub = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / sub;
+  for (let i = 0; i < sub; i++) physics(h);
+  for (const n of N) { n.hov = approach(n.hov, n === (drag ? drag.n : hover) ? 1 : 0, 10, dt); if (n.kind === 'pill') n.selD = approach(n.selD, n.sel, 9, dt); }
+  updateStrings(dt);
+  const LEAD = .1;                                       // the node starts swelling 0.1 s before a pulse lands
+  for (const pu of pulses) {
+    if (!pu.kicked && ptime >= pu.t0 + pu.dur - Math.min(LEAD, pu.dur * .5)) { pu.kicked = true; kickNode(pu.b, pu.main ? .6 : 1); }
+    if (!pu.arrived && ptime >= pu.t0 + pu.dur) { pu.arrived = true; if (pu.onArrive) pu.onArrive(); }
+  }
+  pulses = pulses.filter(pu => ptime < pu.t0 + pu.dur * (1 + TRAIL) + .05);
+  rings = rings.filter(g => ptime < g.t0 + .7);
+  for (const tm of timers) if (!tm.done && ptime >= tm.t) { tm.done = true; tm.fn(); }
+  timers = timers.filter(tm => !tm.done);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+// speed slider: log scale 0.25x to 4x
+const spd = document.getElementById('spd'), sknob = document.getElementById('sknob'), sfill = document.getElementById('sfill'), slab = document.getElementById('slab');
+const SMIN = .25, SMAX = 4, s2t = v => Math.log(v / SMIN) / Math.log(SMAX / SMIN), t2s = t => SMIN * Math.pow(SMAX / SMIN, t);
+function placeS() { const t = s2t(speed) * 100; sknob.style.left = t + '%'; sfill.style.width = t + '%'; slab.textContent = 'speed ' + (speed < 1 ? speed.toFixed(2) : speed.toFixed(1)) + '×'; }
+function setS(x) { const r = spd.getBoundingClientRect(); let v = t2s(clamp((x - r.left) / r.width)); if (Math.abs(v - 1) < .06) v = 1; speed = v; placeS(); }
+spd.addEventListener('pointerdown', e => { spd.setPointerCapture(e.pointerId); spd.classList.add('active'); setS(e.clientX); });
+spd.addEventListener('pointermove', e => { if (spd.hasPointerCapture(e.pointerId)) setS(e.clientX); });
+spd.addEventListener('pointerup', e => { spd.releasePointerCapture(e.pointerId); spd.classList.remove('active'); });
+sknob.addEventListener('keydown', e => { const k = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key]; if (k) { speed = t2s(clamp(s2t(speed) + k * .05)); placeS(); e.preventDefault(); e.stopPropagation(); } });
+placeS();
+
+route(); resize();
+N.forEach(n => { n.born = n.sub ? .5 + Math.random() * .5 : Math.hypot(n.hx - 800, n.hy - 450) / 900 * .6; });
+src.value = DEFAULT; doAssemble();
+new ResizeObserver(resize).observe(cv);
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+  // Site theme toggle, as on the other pages. This page is light-only for now,
+  // so the button only stores the choice for the rest of the site and swaps its icon.
+  (function () {
+    var root = document.documentElement, btn = document.getElementById('theme-toggle');
+    try { var t = localStorage.getItem('theme'); if (t === 'dark' || t === 'light') root.setAttribute('data-theme', t); } catch (e) {}
+    function dark() { return root.getAttribute('data-theme') === 'dark'; }
+    function paint() { btn.textContent = dark() ? '☀' : '☽'; btn.title = dark() ? 'Switch to light mode' : 'Switch to dark mode'; }
+    paint();
+    btn.addEventListener('click', function () {
+      var next = dark() ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      paint();
+    });
+  })();
+</script>
+</body>
+</html>
